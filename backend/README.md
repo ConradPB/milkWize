@@ -1,4 +1,3 @@
-````md
 # milkWize Backend
 
 Node + Fastify + TypeScript backend for milkWize. Includes basic endpoints:
@@ -23,8 +22,8 @@ create or replace function get_admin_id_from_jwt() returns uuid language sql sta
 select id from admins where auth_uid = auth.uid()::text limit 1;
 $$;
 ```
+
 ````
 
 ```
-
-```
+````
