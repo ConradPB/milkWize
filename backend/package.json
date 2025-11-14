@@ -27,6 +27,7 @@
 "@types/jest": "^29.5.3",
 "@types/node": "^20.5.1",
 "eslint": "^8.49.0",
+"eslint-config-prettier": "^10.1.8",
 "prettier": "^3.8.0"
 }
 }
