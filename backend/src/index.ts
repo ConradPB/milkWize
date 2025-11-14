@@ -11,11 +11,9 @@ const server = Fastify({
   logger: true,
 });
 
-// security headers
-await server.register(helmet);
-
-// body parser for form data
-await server.register(formbody);
+// register plugins (no top-level await)
+server.register(helmet);
+server.register(formbody);
 
 server.get("/health", async () => ({ status: "ok" }));
 
@@ -23,7 +21,6 @@ server.register(milkingRoutes);
 server.register(webhookRoutes);
 
 const port = Number(process.env.PORT || 8080);
-
 server
   .listen({ port, host: "0.0.0.0" })
   .then(() => server.log.info(`Server listening on ${port}`))
