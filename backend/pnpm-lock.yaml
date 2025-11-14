@@ -36,6 +36,9 @@ importers:
       '@types/node':
         specifier: ^20.5.1
         version: 20.19.25
+      '@types/node-fetch':
+        specifier: ^2.6.13
+        version: 2.6.13
       eslint:
         specifier: ^8.49.0
         version: 8.57.1
@@ -604,6 +607,9 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
+  '@types/node-fetch@2.6.13':
+    resolution: {integrity: sha512-QGpRVpzSaUs30JBSGPjOg4Uveu384erbHBoT1zeONvyCfwQxIkUshLAOqN/k9EjGviPRmWTTe6aH2qySWKTVSw==}
+
   '@types/node@20.19.25':
     resolution: {integrity: sha512-ZsJzA5thDQMSQO788d7IocwwQbI8B5OPzmqNvpf3NY/+MHDAS759Wo0gd2WQeXYt5AAAQjzcrTVC6SKCuYgoCQ==}
 
@@ -1145,6 +1151,10 @@ packages:
   form-data@2.5.5:
     resolution: {integrity: sha512-jqdObeR2rxZZbPSGL+3VckHMYtu+f9//KXBsVny6JSX/pa38Fy+bGjuG8eW/H6USNQWhLi8Num++cU2yOCNz4A==}
     engines: {node: '>= 0.12'}
+
+  form-data@4.0.4:
+    resolution: {integrity: sha512-KrGhL9Q4zjj0kiUt5OO4Mr/A/jlI2jDYs5eHBpYHPcBEVSiipAvn2Ko2HnPe20rmcuuvMHNdZFp+4IlGTMF0Ow==}
+    engines: {node: '>= 6'}
 
   fs.realpath@1.0.0:
     resolution: {integrity: sha512-OO0pH2lK6a0hZnAdau5ItzHPI6pUlvI7jMVnxUQRtw4owF2wk8lOSabtGDCTP4Ggrg2MbGnWO9X8K1t4+fGMDw==}
@@ -3076,6 +3086,11 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
+  '@types/node-fetch@2.6.13':
+    dependencies:
+      '@types/node': 20.19.25
+      form-data: 4.0.4
+
   '@types/node@20.19.25':
     dependencies:
       undici-types: 6.21.0
@@ -3211,8 +3226,7 @@ snapshots:
       retry: 0.13.1
     optional: true
 
-  asynckit@0.4.0:
-    optional: true
+  asynckit@0.4.0: {}
 
   atomic-sleep@1.0.0: {}
 
@@ -3319,7 +3333,6 @@ snapshots:
     dependencies:
       es-errors: 1.3.0
       function-bind: 1.1.2
-    optional: true
 
   callsites@3.1.0: {}
 
@@ -3371,7 +3384,6 @@ snapshots:
   combined-stream@1.0.8:
     dependencies:
       delayed-stream: 1.0.0
-    optional: true
 
   concat-map@0.0.1: {}
 
@@ -3412,8 +3424,7 @@ snapshots:
 
   deepmerge@4.3.1: {}
 
-  delayed-stream@1.0.0:
-    optional: true
+  delayed-stream@1.0.0: {}
 
   dequal@2.0.3: {}
 
@@ -3434,7 +3445,6 @@ snapshots:
       call-bind-apply-helpers: 1.0.2
       es-errors: 1.3.0
       gopd: 1.2.0
-    optional: true
 
   duplexify@4.1.3:
     dependencies:
@@ -3467,16 +3477,13 @@ snapshots:
     dependencies:
       is-arrayish: 0.2.1
 
-  es-define-property@1.0.1:
-    optional: true
+  es-define-property@1.0.1: {}
 
-  es-errors@1.3.0:
-    optional: true
+  es-errors@1.3.0: {}
 
   es-object-atoms@1.1.1:
     dependencies:
       es-errors: 1.3.0
-    optional: true
 
   es-set-tostringtag@2.1.0:
     dependencies:
@@ -3484,7 +3491,6 @@ snapshots:
       get-intrinsic: 1.3.0
       has-tostringtag: 1.0.2
       hasown: 2.0.2
-    optional: true
 
   escalade@3.2.0: {}
 
@@ -3717,6 +3723,14 @@ snapshots:
       safe-buffer: 5.2.1
     optional: true
 
+  form-data@4.0.4:
+    dependencies:
+      asynckit: 0.4.0
+      combined-stream: 1.0.8
+      es-set-tostringtag: 2.1.0
+      hasown: 2.0.2
+      mime-types: 2.1.35
+
   fs.realpath@1.0.0: {}
 
   fsevents@2.3.3:
@@ -3763,7 +3777,6 @@ snapshots:
       has-symbols: 1.1.0
       hasown: 2.0.2
       math-intrinsics: 1.1.0
-    optional: true
 
   get-package-type@0.1.0: {}
 
@@ -3771,7 +3784,6 @@ snapshots:
     dependencies:
       dunder-proto: 1.0.1
       es-object-atoms: 1.1.1
-    optional: true
 
   get-stream@6.0.1: {}
 
@@ -3829,8 +3841,7 @@ snapshots:
 
   google-logging-utils@0.0.2: {}
 
-  gopd@1.2.0:
-    optional: true
+  gopd@1.2.0: {}
 
   graceful-fs@4.2.11: {}
 
@@ -3855,13 +3866,11 @@ snapshots:
 
   has-flag@4.0.0: {}
 
-  has-symbols@1.1.0:
-    optional: true
+  has-symbols@1.1.0: {}
 
   has-tostringtag@1.0.2:
     dependencies:
       has-symbols: 1.1.0
-    optional: true
 
   hasown@2.0.2:
     dependencies:
@@ -4464,8 +4473,7 @@ snapshots:
     dependencies:
       tmpl: 1.0.5
 
-  math-intrinsics@1.1.0:
-    optional: true
+  math-intrinsics@1.1.0: {}
 
   merge-stream@2.0.0: {}
 
@@ -4474,13 +4482,11 @@ snapshots:
       braces: 3.0.3
       picomatch: 2.3.1
 
-  mime-db@1.52.0:
-    optional: true
+  mime-db@1.52.0: {}
 
   mime-types@2.1.35:
     dependencies:
       mime-db: 1.52.0
-    optional: true
 
   mime@3.0.0:
     optional: true
