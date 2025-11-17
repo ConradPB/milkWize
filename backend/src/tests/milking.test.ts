@@ -8,7 +8,7 @@ jest.mock("../supabase", () => ({
   },
 }));
 
-import milkingRoutes from "./routes/milking";
+import milkingRoutes from "../routes/milking";
 import Fastify from "fastify";
 
 describe("milking route", () => {
