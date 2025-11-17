@@ -26,6 +26,6 @@ describe("milking route", () => {
       url: "/api/milking_events",
       payload: {},
     });
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode)toBe(401);
   });
 });
