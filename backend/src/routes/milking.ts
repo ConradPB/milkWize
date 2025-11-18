@@ -42,4 +42,4 @@ export default async function milkingRoutes(server: FastifyInstance) {
       }
 
     }
-  )}
+  }
