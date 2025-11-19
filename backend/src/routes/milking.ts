@@ -45,6 +45,55 @@ export default async function milkingRoutes(server: FastifyInstance) {
         cow_id = arr[0].id;
       }
 
+      // Validate cow_id
+      if (!isValidUuid(String(cow_id))) {
+        return reply.status(400).send({ error: 'cow_id must be a valid UUID', cow_id });
+      }
+
+      // Resolve user info via supabase admin client (service role)
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (userRes.error) {
+        server.log.error({ msg: 'supabaseAdmin.auth.getUser failed', error: userRes.error });
+        return reply.status(403).send({ error: 'Failed to resolve user from token' });
+      }
+      const userId = userRes.data?.user?.id;
+      if (!userId) {
+        server.log.error({ msg: 'No user id in supabase auth response', userRes });
+        return reply.status(403).send({ error: 'Invalid user token' });
+      }
+
+      // Query admins table to find the mapped admin id (UUID)
+      const { data: adminRows, error: adminError } = await supabaseAdmin
+        .from('admins')
+        .select('id,auth_uid')
+        .eq('auth_uid', userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (adminError) {
+        server.log.error({ msg: 'Error querying admins table', adminError });
+        return reply.status(500).send({ error: 'Server failed to lookup admin' });
+      }
+      if (!adminRows) {
+        return reply.status(403).send({ error: 'User not mapped to admin' });
+      }
+
+      const adminId = (adminRows as any).id;
+      if (!isValidUuid(String(adminId))) {
+        server.log.error({ msg: 'Resolved admin id not uuid', adminId });
+        return reply.status(400).send({ error: 'Resolved admin id is not a valid UUID', adminId });
+      }
+
+      server.log.info({
+        msg: 'Inserting milking_event - resolved values (server-resolve)',
+        cow_id,
+        cow_id_type: typeof cow_id,
+        adminId,
+        adminId_type: typeof adminId,
+        milk_liters,
+        milking_time
+      });
+
       
   });
 }
