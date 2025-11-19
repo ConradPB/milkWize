@@ -4,40 +4,25 @@ import crypto from "crypto";
 export default async function webhookRoutes(server: FastifyInstance) {
   server.post("/api/webhook/payment", async (request, reply) => {
     try {
-      // Received header
-      const receivedSigHeader =
-        (request.headers["x-webhook-signature"] as string) || "";
-
-      // Server raw body string (this is what JSON.stringify(request.body) would be)
-      // Keep exact same canonicalization used in verification
+      const received = (request.headers["x-webhook-signature"] as string) || "";
       const raw = JSON.stringify(request.body || {});
-
-      // Compute HMAC on server using WEBHOOK_SECRET
       const secret = process.env.WEBHOOK_SECRET || "";
-      const computedHmac = secret
-        ? crypto.createHmac("sha256", secret).update(raw).digest("hex")
-        : "";
 
-      // Log debug info (temporary)
-      server.log.info({
-        debug: "webhook-debug",
-        rawBody: raw,
-        receivedSigHeader,
-        computedHmac,
-        computedPrefixed: `sha256=${computedHmac}`,
-      });
-
-      // Accept either raw hex or sha256=<hex>
-      const matches =
-        receivedSigHeader === computedHmac ||
-        receivedSigHeader === `sha256=${computedHmac}`;
-
-      if (!matches) {
-        return reply.status(403).send({ error: "Invalid signature" });
+      if (!secret) {
+        server.log.error("Missing WEBHOOK_SECRET in environment");
+        return reply.status(500).send({ error: "server misconfiguration" });
       }
 
-      // TODO: process payment webhook payload here...
-      server.log.info({ msg: "valid webhook", body: request.body });
+      const computed = crypto
+        .createHmac("sha256", secret)
+        .update(raw)
+        .digest("hex");
+
+      // Accept either raw hex or prefixed form
+      const ok = received === computed || received === `sha256=${computed}`;
+      if (!ok) return reply.status(403).send({ error: "Invalid signature" });
+
+      // TODO: actual webhook processing here
       return reply.send({ ok: true });
     } catch (err: any) {
       server.log.error(err);
