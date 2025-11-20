@@ -23,6 +23,7 @@ server.register(milkingRoutes);
 server.register(webhookRoutes);
 server.register(ordersRoutes);
 server.register(paymentsRoutes);
+server.register(clientsRoutes);
 
 const port = Number(process.env.PORT || 8080);
 server
