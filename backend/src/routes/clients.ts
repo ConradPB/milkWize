@@ -67,4 +67,29 @@ export default async function clientsRoutes(server: FastifyInstance) {
       return reply.status(500).send({ error: err.message || "server error" });
     }
   });
+
+  // List clients (filterable)
+  server.get("/api/clients", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      const q = request.query as any;
+      const { phone, name } = q;
+
+      let query = supabaseAdmin.from("clients").select("*");
+
+      if (phone) query = query.eq("phone", phone);
+      if (name) query = query.ilike("name", `%${name}%`);
+
+      const { data, error } = await query;
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.send({ data });
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
+  });
 }
