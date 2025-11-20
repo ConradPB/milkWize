@@ -104,4 +104,56 @@ export default async function ordersRoutes(server: FastifyInstance) {
       return reply.status(500).send({ error: err.message || "server error" });
     }
   });
+
+  // Update order
+  server.put("/api/orders/:id", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      const { id } = request.params as any;
+      if (!isValidUuid(String(id)))
+        return reply.status(400).send({ error: "Invalid order id" });
+
+      const body = (request.body || {}) as any;
+      const allowed = [
+        "scheduled_date",
+        "scheduled_window",
+        "quantity_liters",
+        "status",
+      ];
+      const updates: any = {};
+      for (const k of allowed) if (k in body) updates[k] = body[k];
+
+      if (Object.keys(updates).length === 0)
+        return reply.status(400).send({ error: "No valid fields to update" });
+
+      // Resolve admin (permission)
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (userRes.error)
+        return reply.status(403).send({ error: "Invalid user token" });
+      const userId = userRes.data?.user?.id;
+      const { data: adminRow } = await supabaseAdmin
+        .from("admins")
+        .select("id")
+        .eq("auth_uid", userId)
+        .limit(1)
+        .maybeSingle();
+      if (!adminRow)
+        return reply.status(403).send({ error: "User not mapped to admin" });
+
+      const { data, error } = await supabaseAdmin
+        .from("orders")
+        .update(updates)
+        .eq("id", id)
+        .select();
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.send({ data });
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
+  });
 }
