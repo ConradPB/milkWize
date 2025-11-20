@@ -1,0 +1,70 @@
+import { FastifyInstance } from "fastify";
+import { supabaseAdmin } from "../supabase";
+import { isValidUuid } from "../utils";
+
+export default async function clientsRoutes(server: FastifyInstance) {
+  // Create client (admin only)
+  server.post("/api/clients", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      const body = (request.body || {}) as any;
+      const { name, phone, address, preferred_window } = body;
+      if (!name || !phone)
+        return reply.status(400).send({ error: "Missing name or phone" });
+
+      // Verify admin (map JWT -> admins row)
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (userRes.error) {
+        server.log.error({
+          msg: "supabaseAdmin.auth.getUser failed",
+          error: userRes.error,
+        });
+        return reply.status(403).send({ error: "Invalid user token" });
+      }
+      const userId = userRes.data?.user?.id;
+      if (!userId)
+        return reply.status(403).send({ error: "Invalid user token" });
+
+      const { data: adminRow, error: adminError } = await supabaseAdmin
+        .from("admins")
+        .select("id")
+        .eq("auth_uid", userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (adminError) {
+        server.log.error({ msg: "Error looking up admin", adminError });
+        return reply.status(500).send({ error: "Server error" });
+      }
+      if (!adminRow)
+        return reply.status(403).send({ error: "User not mapped to admin" });
+
+      // Insert client
+      const { data, error } = await supabaseAdmin
+        .from("clients")
+        .insert([
+          {
+            name,
+            phone,
+            address: address || null,
+            preferred_window: preferred_window || "morning",
+          },
+        ])
+        .select();
+
+      if (error) {
+        server.log.error({ msg: "Error inserting client", error });
+        return reply.status(500).send({ error: error.message });
+      }
+
+      return reply.status(201).send({ data });
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
+  });
+}
