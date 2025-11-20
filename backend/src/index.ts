@@ -4,6 +4,7 @@ import formbody from "@fastify/formbody";
 import dotenv from "dotenv";
 import milkingRoutes from "./routes/milking";
 import webhookRoutes from "./routes/webhook";
+import ordersRoutes from "./routes/orders";
 
 dotenv.config();
 
@@ -19,6 +20,8 @@ server.get("/health", async () => ({ status: "ok" }));
 
 server.register(milkingRoutes);
 server.register(webhookRoutes);
+server.register(ordersRoutes);
+server.register(paymentsRoutes);
 
 const port = Number(process.env.PORT || 8080);
 server
