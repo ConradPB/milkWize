@@ -6,6 +6,7 @@ import milkingRoutes from "./routes/milking";
 import webhookRoutes from "./routes/webhook";
 import ordersRoutes from "./routes/orders";
 import paymentsRoutes from "./routes/payments";
+import clientsRoutes from "./routes/clients";
 
 dotenv.config();
 
