@@ -156,4 +156,41 @@ export default async function ordersRoutes(server: FastifyInstance) {
       return reply.status(500).send({ error: err.message || "server error" });
     }
   });
+
+  // Delete order
+  server.delete("/api/orders/:id", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      const { id } = request.params as any;
+      if (!isValidUuid(String(id)))
+        return reply.status(400).send({ error: "Invalid order id" });
+
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (userRes.error)
+        return reply.status(403).send({ error: "Invalid user token" });
+      const userId = userRes.data?.user?.id;
+      const { data: adminRow } = await supabaseAdmin
+        .from("admins")
+        .select("id")
+        .eq("auth_uid", userId)
+        .limit(1)
+        .maybeSingle();
+      if (!adminRow)
+        return reply.status(403).send({ error: "User not mapped to admin" });
+
+      const { error } = await supabaseAdmin
+        .from("orders")
+        .delete()
+        .eq("id", id);
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.send({ ok: true });
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
+  });
 }
