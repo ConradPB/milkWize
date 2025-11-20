@@ -43,25 +43,66 @@ export default async function clientsRoutes(server: FastifyInstance) {
       if (!adminRow)
         return reply.status(403).send({ error: "User not mapped to admin" });
 
-      // Insert client
-      const { data, error } = await supabaseAdmin
-        .from("clients")
-        .insert([
-          {
-            name,
-            phone,
-            address: address || null,
-            preferred_window: preferred_window || "morning",
-          },
-        ])
-        .select();
+      // Upsert-like behavior: try insert, and if phone unique-violation occurs return existing row
+      const insertPayload = {
+        name,
+        phone,
+        address: address || null,
+        preferred_window: preferred_window || "morning",
+      };
 
-      if (error) {
-        server.log.error({ msg: "Error inserting client", error });
-        return reply.status(500).send({ error: error.message });
+      try {
+        const { data, error } = await supabaseAdmin
+          .from("clients")
+          .insert([insertPayload])
+          .select();
+
+        if (error) {
+          // Detect Postgres unique_violation (23505) or duplicate key message
+          const pgCode = (error as any)?.code || "";
+          if (
+            pgCode === "23505" ||
+            (error.message && error.message.includes("duplicate key"))
+          ) {
+            // Fetch existing client by phone and return it
+            const { data: existing, error: findErr } = await supabaseAdmin
+              .from("clients")
+              .select("*")
+              .eq("phone", phone)
+              .limit(1)
+              .maybeSingle();
+
+            if (findErr) {
+              server.log.error({
+                msg: "Error fetching existing client after unique violation",
+                findErr,
+              });
+              return reply.status(500).send({ error: "Server error" });
+            }
+            return reply.status(200).send({ data: [existing] });
+          }
+
+          server.log.error({ msg: "Error inserting client", error });
+          return reply.status(500).send({ error: error.message });
+        }
+
+        // New client inserted
+        return reply.status(201).send({ data });
+      } catch (e: any) {
+        server.log.error({ msg: "Unexpected error inserting client", e });
+        // Fallback: try to return existing client by phone
+        const { data: existing, error: findErr } = await supabaseAdmin
+          .from("clients")
+          .select("*")
+          .eq("phone", phone)
+          .limit(1)
+          .maybeSingle();
+
+        if (findErr) {
+          return reply.status(500).send({ error: "Server error" });
+        }
+        return reply.status(200).send({ data: [existing] });
       }
-
-      return reply.status(201).send({ data });
     } catch (err: any) {
       server.log.error(err);
       return reply.status(500).send({ error: err.message || "server error" });
