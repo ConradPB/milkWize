@@ -1,44 +1,58 @@
-import { FastifyInstance } from 'fastify';
-import { supabaseAdmin } from '../supabase';
-import { isValidUuid } from '../utils';
+import { FastifyInstance } from "fastify";
+import { supabaseAdmin } from "../supabase";
+import { isValidUuid } from "../utils";
 
 export default async function ordersRoutes(server: FastifyInstance) {
   // Create order
-  server.post('/api/orders', async (request, reply) => {
+  server.post("/api/orders", async (request, reply) => {
     try {
-      const userJwt = (request.headers.authorization || '').replace('Bearer ', '').trim();
-      if (!userJwt) return reply.status(401).send({ error: 'Missing JWT' });
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
 
       const body = (request.body || {}) as any;
-      const { client_id, scheduled_date, scheduled_window, quantity_liters } = body;
+      const { client_id, scheduled_date, scheduled_window, quantity_liters } =
+        body;
 
       if (!client_id || !scheduled_date || quantity_liters == null) {
-        return reply.status(400).send({ error: 'Missing required fields: client_id, scheduled_date, quantity_liters' });
+        return reply
+          .status(400)
+          .send({
+            error:
+              "Missing required fields: client_id, scheduled_date, quantity_liters",
+          });
       }
       if (!isValidUuid(String(client_id))) {
-        return reply.status(400).send({ error: 'client_id must be a valid UUID' });
+        return reply
+          .status(400)
+          .send({ error: "client_id must be a valid UUID" });
       }
 
       // Resolve user -> admin id
       const userRes = await supabaseAdmin.auth.getUser(userJwt);
-      if (userRes.error) return reply.status(403).send({ error: 'Invalid user token' });
+      if (userRes.error)
+        return reply.status(403).send({ error: "Invalid user token" });
       const userId = userRes.data?.user?.id;
-      if (!userId) return reply.status(403).send({ error: 'Invalid user token' });
+      if (!userId)
+        return reply.status(403).send({ error: "Invalid user token" });
 
       const { data: adminRow, error: adminError } = await supabaseAdmin
-        .from('admins')
-        .select('id,auth_uid')
-        .eq('auth_uid', userId)
+        .from("admins")
+        .select("id,auth_uid")
+        .eq("auth_uid", userId)
         .limit(1)
         .maybeSingle();
 
-      if (adminError) return reply.status(500).send({ error: 'Failed to lookup admin' });
-      if (!adminRow) return reply.status(403).send({ error: 'User not mapped to admin' });
+      if (adminError)
+        return reply.status(500).send({ error: "Failed to lookup admin" });
+      if (!adminRow)
+        return reply.status(403).send({ error: "User not mapped to admin" });
 
       const adminId = (adminRow as any).id;
 
       const { data, error } = await supabaseAdmin
-        .from('orders')
+        .from("orders")
         .insert([
           {
             client_id,
@@ -46,8 +60,8 @@ export default async function ordersRoutes(server: FastifyInstance) {
             scheduled_date,
             scheduled_window,
             quantity_liters,
-            status: 'pending'
-          }
+            status: "pending",
+          },
         ])
         .select();
 
@@ -55,10 +69,39 @@ export default async function ordersRoutes(server: FastifyInstance) {
       return reply.status(201).send({ data });
     } catch (err: any) {
       server.log.error(err);
-      return reply.status(500).send({ error: err.message || 'server error' });
+      return reply.status(500).send({ error: err.message || "server error" });
     }
   });
 
+  // List orders (filter by client_id, status, date)
+  server.get("/api/orders", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
 
+      const q = request.query as any;
+      const { client_id, status, scheduled_date } = q;
+
+      // build filter
+      let query = supabaseAdmin.from("orders").select("*");
+
+      if (client_id) {
+        if (!isValidUuid(String(client_id)))
+          return reply.status(400).send({ error: "client_id must be UUID" });
+        query = query.eq("client_id", client_id);
+      }
+      if (status) query = query.eq("status", status);
+      if (scheduled_date) query = query.eq("scheduled_date", scheduled_date);
+
+      // Use service role to read
+      const { data, error } = await query;
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.send({ data });
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
   });
 }
