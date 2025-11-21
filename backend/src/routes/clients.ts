@@ -4,6 +4,84 @@ import { isValidUuid } from "../utils";
 
 export default async function clientsRoutes(server: FastifyInstance) {
   // Create client (admin only)
+  server.post("/api/clients", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      const { name, phone, address, preferred_window } = request.body as any;
+      if (!name || !phone)
+        return reply.status(400).send({ error: "Missing name or phone" });
+
+      // Verify admin
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (userRes.error)
+        return reply.status(403).send({ error: "Invalid user token" });
+      const userId = userRes.data?.user?.id;
+
+      const { data: adminRow, error: adminError } = await supabaseAdmin
+        .from("admins")
+        .select("id")
+        .eq("auth_uid", userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (adminError) return reply.status(500).send({ error: "Server error" });
+      if (!adminRow)
+        return reply.status(403).send({ error: "User not mapped to admin" });
+
+      const insertPayload = {
+        name,
+        phone,
+        address: address || null,
+        preferred_window: preferred_window || "morning",
+      };
+
+      // Try insert, fallback to existing if unique constraint violation
+      try {
+        const { data, error } = await supabaseAdmin
+          .from("clients")
+          .insert([insertPayload])
+          .select();
+
+        if (error) {
+          // Handle duplicate phone
+          if (
+            (error as any)?.code === "23505" ||
+            error.message.includes("duplicate key")
+          ) {
+            const { data: existing, error: findErr } = await supabaseAdmin
+              .from("clients")
+              .select("*")
+              .eq("phone", phone)
+              .limit(1)
+              .maybeSingle();
+
+            if (findErr)
+              return reply.status(500).send({ error: "Server error" });
+            return reply.status(200).send({ data: [existing] });
+          }
+          return reply.status(500).send({ error: error.message });
+        }
+
+        return reply.status(201).send({ data });
+      } catch (e: any) {
+        // fallback: return existing client
+        const { data: existing } = await supabaseAdmin
+          .from("clients")
+          .select("*")
+          .eq("phone", phone)
+          .limit(1)
+          .maybeSingle();
+        return reply.status(200).send({ data: [existing] });
+      }
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
+  });
 
   // List clients (filterable)
   server.get("/api/clients", async (request, reply) => {
