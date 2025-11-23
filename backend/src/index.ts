@@ -7,6 +7,7 @@ import webhookRoutes from "./routes/webhook";
 import ordersRoutes from "./routes/orders";
 import paymentsRoutes from "./routes/payments";
 import clientsRoutes from "./routes/clients";
+import fastifyRateLimit from "@fastify/rate-limit";
 
 dotenv.config();
 
@@ -14,7 +15,7 @@ const server = Fastify({
   logger: true,
 });
 
-await server.register(rateLimit, {
+await server.register(fastifyRateLimit, {
   max: 100, // default max requests
   timeWindow: "1 minute", // window for the max
   keyGenerator: (req) => {
