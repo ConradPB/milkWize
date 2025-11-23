@@ -14,6 +14,22 @@ const server = Fastify({
   logger: true,
 });
 
+await server.register(rateLimit, {
+  max: 100, // default max requests
+  timeWindow: "1 minute", // window for the max
+  keyGenerator: (req) => {
+    // prefer IP; if behind proxy and X-Forwarded-For is set, uses that
+    return String(req.headers["x-forwarded-for"] || req.ip || "unknown");
+  },
+  errorResponseBuilder: (req, context) => {
+    return {
+      statusCode: 429,
+      error: "Too Many Requests",
+      message: `Rate limit exceeded, retry in ${Math.ceil(context.after / 1000)}s`,
+    };
+  },
+});
+
 // register plugins (no top-level await)
 server.register(helmet);
 server.register(formbody);
