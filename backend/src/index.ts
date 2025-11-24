@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import helmet from "@fastify/helmet";
-import formbody from "fastify-formbody";
+import formbody from "@fastify/formbody";
 import dotenv from "dotenv";
 import rateLimit from "@fastify/rate-limit";
 
