@@ -1,4 +1,3 @@
-// src/index.ts
 import Fastify from "fastify";
 import helmet from "@fastify/helmet";
 import formbody from "@fastify/formbody";
