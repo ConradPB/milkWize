@@ -60,7 +60,7 @@ async function start() {
         if (!CORS_ORIGIN || CORS_ORIGIN === "*") return cb(null, true);
         const allowed = CORS_ORIGIN.split(",").map((s) => s.trim());
         if (allowed.includes(origin)) return cb(null, true);
-        return cb(new Error("Not allowed by CORS"));
+        return new Error("Not allowed by CORS");
       },
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "x-webhook-signature"],
