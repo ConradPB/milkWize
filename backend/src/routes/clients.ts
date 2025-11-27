@@ -343,4 +343,48 @@ export default async function clientsRoutes(server: FastifyInstance) {
       return reply.status(500).send({ error: err.message || "server error" });
     }
   });
+
+  // ---------------------------
+  // Client: get own client row + orders summary
+  // GET /api/clients/me
+  // ---------------------------
+  server.get("/api/clients/me", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (userRes.error)
+        return reply.status(403).send({ error: "Invalid user token" });
+      const callerUid = userRes.data?.user?.id;
+
+      // Use the RPC or direct query (RLS will enforce)
+      const { data: client, error: clientErr } = await supabaseAdmin
+        .from("clients")
+        .select("*")
+        .eq("auth_user_id", callerUid)
+        .limit(1)
+        .maybeSingle();
+
+      if (clientErr)
+        return reply.status(500).send({ error: clientErr.message });
+      if (!client) return reply.status(404).send({ error: "client not found" });
+
+      // Fetch orders for this client (server uses supabaseAdmin; RLS also protects)
+      const { data: orders, error: ordersErr } = await supabaseAdmin
+        .from("orders")
+        .select("*")
+        .eq("client_id", client.id);
+
+      if (ordersErr)
+        return reply.status(500).send({ error: ordersErr.message });
+
+      return reply.send({ client, orders });
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
+  });
 }
