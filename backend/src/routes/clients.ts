@@ -229,19 +229,21 @@ export default async function clientsRoutes(server: FastifyInstance) {
       if (!auth_user_id || !isValidUuid(String(auth_user_id)))
         return reply.status(400).send({ error: "Invalid auth_user_id" });
 
-      // Check the auth user actually exists in Supabase (query auth.users)
-      const { data: targetUserRow, error: targetUserErr } = await supabaseAdmin
-        .from("auth.users")
-        .select("id")
-        .eq("id", auth_user_id)
-        .limit(1)
-        .maybeSingle();
+      // Check the auth user actually exists in Supabase (via RPC helper)
+      const { data: targetUserRow, error: targetUserErr } =
+        await supabaseAdmin.rpc("get_auth_user_by_id", { _id: auth_user_id });
 
       if (targetUserErr) {
-        server.log.error({ msg: "Error querying auth.users", targetUserErr });
+        server.log.error({
+          msg: "Error querying auth.users via RPC",
+          targetUserErr,
+        });
         return reply.status(500).send({ error: "Server error" });
       }
-      if (!targetUserRow) {
+      if (
+        !targetUserRow ||
+        (Array.isArray(targetUserRow) && targetUserRow.length === 0)
+      ) {
         return reply.status(404).send({ error: "Auth user not found" });
       }
 
