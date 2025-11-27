@@ -272,4 +272,75 @@ export default async function clientsRoutes(server: FastifyInstance) {
       return reply.status(500).send({ error: err.message || "server error" });
     }
   });
+
+  // ---------------------------
+  // Client self-link: signed-in user claims a client by phone (only if unclaimed)
+  // POST /api/clients/link-self
+  // Body: { "phone": "+2567...." }   OR { "client_id": "<uuid>" }
+  // ---------------------------
+  server.post("/api/clients/link-self", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      // Validate token & get caller id
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (userRes.error)
+        return reply.status(403).send({ error: "Invalid user token" });
+      const callerUid = userRes.data?.user?.id;
+      if (!callerUid)
+        return reply.status(403).send({ error: "Invalid user token" });
+
+      const body = (request.body || {}) as any;
+      const { phone, client_id } = body;
+      if (!phone && !client_id)
+        return reply.status(400).send({ error: "Provide phone or client_id" });
+
+      // Find the client row
+      let clientRow: any = null;
+      if (client_id) {
+        if (!isValidUuid(String(client_id)))
+          return reply.status(400).send({ error: "Invalid client_id" });
+        const { data, error } = await supabaseAdmin
+          .from("clients")
+          .select("*")
+          .eq("id", client_id)
+          .limit(1)
+          .maybeSingle();
+        if (error) return reply.status(500).send({ error: error.message });
+        clientRow = data;
+      } else if (phone) {
+        const { data, error } = await supabaseAdmin
+          .from("clients")
+          .select("*")
+          .eq("phone", phone)
+          .limit(1)
+          .maybeSingle();
+        if (error) return reply.status(500).send({ error: error.message });
+        clientRow = data;
+      }
+
+      if (!clientRow)
+        return reply.status(404).send({ error: "client row not found" });
+
+      // If already linked, return conflict
+      if (clientRow.auth_user_id)
+        return reply.status(409).send({ error: "client already linked" });
+
+      // CAUTION: this flow trusts phone match only. It's recommended to add OTP verification
+      const { data, error } = await supabaseAdmin
+        .from("clients")
+        .update({ auth_user_id: callerUid })
+        .eq("id", clientRow.id)
+        .select();
+
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.status(200).send({ data });
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
+  });
 }
