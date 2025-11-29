@@ -350,4 +350,4 @@ export default async function clientsRoutes(server: FastifyInstance) {
   // Client: get own client row + orders summary
   // GET /api/clients/me
   // ---------------------------
-  
+}
