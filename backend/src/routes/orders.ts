@@ -204,6 +204,15 @@ export default async function ordersRoutes(server: FastifyInstance) {
       const { id } = request.params as any;
       if (!isValidUuid(String(id))) return reply.status(400).send({ error: 'Invalid order id' });
 
-   
+      // Validate JWT and get caller uid
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (userRes.error) {
+        server.log.error({ msg: 'supabaseAdmin.auth.getUser failed', error: userRes.error });
+        return reply.status(403).send({ error: 'Invalid user token' });
+      }
+      const callerUid = userRes.data?.user?.id;
+      if (!callerUid) return reply.status(403).send({ error: 'Invalid user token' });
+
+      
   });
 }
