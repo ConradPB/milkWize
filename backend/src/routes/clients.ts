@@ -377,7 +377,29 @@ server.get("/api/clients/me", async (request, reply) => {
       server.log.warn({ msg: "clients/me - supabaseAdmin.auth.getUser threw", err: e && (e as any).message });
     }
 
-   
+    // Fallback: decode token locally to extract `sub` (only for robustness/debugging)
+    if (!callerUid) {
+      try {
+        const parts = userJwt.split(".");
+        if (parts.length >= 2) {
+          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
+          if (payload && payload.sub) {
+            callerUid = String(payload.sub);
+            server.log.info({ msg: "clients/me - resolved caller via local JWT decode", callerUid });
+          } else {
+            server.log.info({ msg: "clients/me - JWT decode found no sub", payloadKeys: Object.keys(payload || {}) });
+          }
+        } else {
+          server.log.info({ msg: "clients/me - JWT did not have 2+ parts", jwtParts: parts.length });
+        }
+      } catch (e) {
+        server.log.warn({ msg: "clients/me - error decoding JWT fallback", err: e && (e as any).message });
+      }
+    }
+
+    if (!callerUid) return reply.status(403).send({ error: "Invalid or unresolvable JWT" });
+
+    
 });
 
 }
