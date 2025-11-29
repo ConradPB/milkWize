@@ -363,7 +363,21 @@ server.get("/api/clients/me", async (request, reply) => {
 
     server.log.info({ msg: "clients/me - incoming request", authHeaderPresent: true });
 
-    
+    // Try supabaseAdmin.auth.getUser() first (preferred)
+    let callerUid: string | null = null;
+    try {
+      const userRes = await supabaseAdmin.auth.getUser(userJwt);
+      if (!userRes.error && userRes.data?.user?.id) {
+        callerUid = userRes.data.user.id;
+        server.log.info({ msg: "clients/me - resolved caller via supabaseAdmin.auth.getUser", callerUid });
+      } else {
+        server.log.info({ msg: "clients/me - supabaseAdmin.auth.getUser returned no user", userRes });
+      }
+    } catch (e) {
+      server.log.warn({ msg: "clients/me - supabaseAdmin.auth.getUser threw", err: e && (e as any).message });
+    }
+
+   
 });
 
 }
