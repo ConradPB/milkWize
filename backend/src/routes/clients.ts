@@ -350,4 +350,20 @@ export default async function clientsRoutes(server: FastifyInstance) {
   // Client: get own client row + orders summary
   // GET /api/clients/me
   // ---------------------------
+
+  // GET /api/clients/me  (replace existing handler with this)
+server.get("/api/clients/me", async (request, reply) => {
+  try {
+    const rawAuth = (request.headers.authorization || "").trim();
+    if (!rawAuth) return reply.status(401).send({ error: "Missing Authorization header" });
+
+    // Expect "Bearer <token>"
+    const userJwt = rawAuth.replace(/^Bearer\s+/i, "").trim();
+    if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+    server.log.info({ msg: "clients/me - incoming request", authHeaderPresent: true });
+
+    
+});
+
 }
