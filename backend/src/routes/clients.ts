@@ -351,55 +351,128 @@ export default async function clientsRoutes(server: FastifyInstance) {
   // GET /api/clients/me
   // ---------------------------
 
-  // GET /api/clients/me  (replace existing handler with this)
-server.get("/api/clients/me", async (request, reply) => {
-  try {
-    const rawAuth = (request.headers.authorization || "").trim();
-    if (!rawAuth) return reply.status(401).send({ error: "Missing Authorization header" });
-
-    // Expect "Bearer <token>"
-    const userJwt = rawAuth.replace(/^Bearer\s+/i, "").trim();
-    if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
-
-    server.log.info({ msg: "clients/me - incoming request", authHeaderPresent: true });
-
-    // Try supabaseAdmin.auth.getUser() first (preferred)
-    let callerUid: string | null = null;
+  server.get("/api/clients/me", async (request, reply) => {
     try {
-      const userRes = await supabaseAdmin.auth.getUser(userJwt);
-      if (!userRes.error && userRes.data?.user?.id) {
-        callerUid = userRes.data.user.id;
-        server.log.info({ msg: "clients/me - resolved caller via supabaseAdmin.auth.getUser", callerUid });
-      } else {
-        server.log.info({ msg: "clients/me - supabaseAdmin.auth.getUser returned no user", userRes });
-      }
-    } catch (e) {
-      server.log.warn({ msg: "clients/me - supabaseAdmin.auth.getUser threw", err: e && (e as any).message });
-    }
+      const rawAuth = (request.headers.authorization || "").trim();
+      if (!rawAuth)
+        return reply
+          .status(401)
+          .send({ error: "Missing Authorization header" });
 
-    // Fallback: decode token locally to extract `sub` (only for robustness/debugging)
-    if (!callerUid) {
+      // Expect "Bearer <token>"
+      const userJwt = rawAuth.replace(/^Bearer\s+/i, "").trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      server.log.info({
+        msg: "clients/me - incoming request",
+        authHeaderPresent: true,
+      });
+
+      // Try supabaseAdmin.auth.getUser() first (preferred)
+      let callerUid: string | null = null;
       try {
-        const parts = userJwt.split(".");
-        if (parts.length >= 2) {
-          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
-          if (payload && payload.sub) {
-            callerUid = String(payload.sub);
-            server.log.info({ msg: "clients/me - resolved caller via local JWT decode", callerUid });
-          } else {
-            server.log.info({ msg: "clients/me - JWT decode found no sub", payloadKeys: Object.keys(payload || {}) });
-          }
+        const userRes = await supabaseAdmin.auth.getUser(userJwt);
+        if (!userRes.error && userRes.data?.user?.id) {
+          callerUid = userRes.data.user.id;
+          server.log.info({
+            msg: "clients/me - resolved caller via supabaseAdmin.auth.getUser",
+            callerUid,
+          });
         } else {
-          server.log.info({ msg: "clients/me - JWT did not have 2+ parts", jwtParts: parts.length });
+          server.log.info({
+            msg: "clients/me - supabaseAdmin.auth.getUser returned no user",
+            userRes,
+          });
         }
       } catch (e) {
-        server.log.warn({ msg: "clients/me - error decoding JWT fallback", err: e && (e as any).message });
+        server.log.warn({
+          msg: "clients/me - supabaseAdmin.auth.getUser threw",
+          err: e && (e as any).message,
+        });
       }
+
+      // Fallback: decode token locally to extract `sub` (only for robustness/debugging)
+      if (!callerUid) {
+        try {
+          const parts = userJwt.split(".");
+          if (parts.length >= 2) {
+            const payload = JSON.parse(
+              Buffer.from(parts[1], "base64").toString("utf8")
+            );
+            if (payload && payload.sub) {
+              callerUid = String(payload.sub);
+              server.log.info({
+                msg: "clients/me - resolved caller via local JWT decode",
+                callerUid,
+              });
+            } else {
+              server.log.info({
+                msg: "clients/me - JWT decode found no sub",
+                payloadKeys: Object.keys(payload || {}),
+              });
+            }
+          } else {
+            server.log.info({
+              msg: "clients/me - JWT did not have 2+ parts",
+              jwtParts: parts.length,
+            });
+          }
+        } catch (e) {
+          server.log.warn({
+            msg: "clients/me - error decoding JWT fallback",
+            err: e && (e as any).message,
+          });
+        }
+      }
+
+      if (!callerUid)
+        return reply.status(403).send({ error: "Invalid or unresolvable JWT" });
+
+      // Query client by auth_user_id
+      const { data: client, error: clientErr } = await supabaseAdmin
+        .from("clients")
+        .select("*")
+        .eq("auth_user_id", callerUid)
+        .limit(1)
+        .maybeSingle();
+
+      server.log.info({
+        msg: "clients/me - db query result",
+        callerUid,
+        clientExists: !!client,
+        clientErr,
+      });
+
+      if (clientErr) {
+        server.log.error({
+          msg: "clients/me - error querying clients",
+          clientErr,
+        });
+        return reply.status(500).send({ error: "Server error" });
+      }
+      if (!client) return reply.status(404).send({ error: "client not found" });
+
+      // Fetch orders for this client
+      const { data: orders, error: ordersErr } = await supabaseAdmin
+        .from("orders")
+        .select("*")
+        .eq("client_id", client.id);
+
+      if (ordersErr) {
+        server.log.error({
+          msg: "clients/me - error querying orders",
+          ordersErr,
+        });
+        return reply.status(500).send({ error: "Server error" });
+      }
+
+      return reply.status(200).send({ client, orders });
+    } catch (err: any) {
+      server.log.error({
+        msg: "clients/me - unexpected error",
+        err: err?.message || err,
+      });
+      return reply.status(500).send({ error: err?.message || "server error" });
     }
-
-    if (!callerUid) return reply.status(403).send({ error: "Invalid or unresolvable JWT" });
-
-    
-});
-
+  });
 }
