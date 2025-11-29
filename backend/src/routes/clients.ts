@@ -351,7 +351,6 @@ export default async function clientsRoutes(server: FastifyInstance) {
   // GET /api/clients/me
   // ---------------------------
 
-  // GET /api/clients/me  (replace existing handler with this)
   server.get("/api/clients/me", async (request, reply) => {
     try {
       const rawAuth = (request.headers.authorization || "").trim();
