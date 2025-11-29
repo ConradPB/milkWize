@@ -193,4 +193,17 @@ export default async function ordersRoutes(server: FastifyInstance) {
       return reply.status(500).send({ error: err.message || "server error" });
     }
   });
+
+
+  // PATCH /api/orders/:id/confirm  (client calls this)
+  server.patch('/api/orders/:id/confirm', async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || '').replace('Bearer ', '').trim();
+      if (!userJwt) return reply.status(401).send({ error: 'Missing JWT' });
+
+      const { id } = request.params as any;
+      if (!isValidUuid(String(id))) return reply.status(400).send({ error: 'Invalid order id' });
+
+   
+  });
 }
