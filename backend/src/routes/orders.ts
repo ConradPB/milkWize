@@ -236,6 +236,9 @@ export default async function ordersRoutes(server: FastifyInstance) {
           .send({ error: "Not allowed or order not found" });
 
       return reply.status(200).send({ data: updated });
-  
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
   });
 }
