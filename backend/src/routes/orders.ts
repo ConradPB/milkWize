@@ -238,7 +238,7 @@ export default async function ordersRoutes(server: FastifyInstance) {
       return reply.status(200).send({ data: updated });
     } catch (err: any) {
       server.log.error(err);
-      return reply.status(500).json({ error: err.message || "server error" });
+      return reply.status(500).({ error: err.message || "server error" });
     }
   });
 }
