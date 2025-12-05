@@ -70,4 +70,36 @@ export default async function ordersRoutes(server: FastifyInstance) {
       return reply.status(500).send({ error: err.message || "server error" });
     }
   });
+
+  // List orders (filter by client_id, status, date)
+  server.get("/api/orders", async (request, reply) => {
+    try {
+      const userJwt = (request.headers.authorization || "")
+        .replace("Bearer ", "")
+        .trim();
+      if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
+
+      const q = request.query as any;
+      const { client_id, status, scheduled_date } = q;
+
+      // build filter
+      let query = supabaseAdmin.from("orders").select("*");
+
+      if (client_id) {
+        if (!isValidUuid(String(client_id)))
+          return reply.status(400).send({ error: "client_id must be UUID" });
+        query = query.eq("client_id", client_id);
+      }
+      if (status) query = query.eq("status", status);
+      if (scheduled_date) query = query.eq("scheduled_date", scheduled_date);
+
+      // Use service role to read
+      const { data, error } = await query;
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.send({ data });
+    } catch (err: any) {
+      server.log.error(err);
+      return reply.status(500).send({ error: err.message || "server error" });
+    }
+  });
 }
