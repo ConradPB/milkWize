@@ -224,24 +224,47 @@ export default async function ordersRoutes(server: FastifyInstance) {
       });
 
       // Call RPC that enforces ownership and updates the order
-      const { data, error } = await supabaseAdmin.rpc("confirm_order", {
-        _order_id: id,
-        _caller: callerUid,
-      });
+      const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
+        "confirm_order",
+        {
+          _order_id: id,
+          _caller: callerUid,
+        }
+      );
 
       server.log.info({ msg: "confirm-debug-after-rpc", rpcData, rpcError });
 
-      if (error) {
-        server.log.error({ msg: "RPC confirm_order failed", error });
+      if (rpcError) {
+        server.log.error({ msg: "RPC confirm_order failed", error: rpcError });
         return reply.status(500).send({ error: "Server error" });
       }
 
       // RPC returns an array of updated rows (or empty array)
-      const updated = Array.isArray(data) ? data[0] : data;
-      if (!updated)
+      const updated = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      if (!updated) {
+        // fetch current order and decide idempotent response
+        const { data: currentOrder, error: orderErr } = await supabaseAdmin
+          .from("orders")
+          .select("*")
+          .eq("id", id)
+          .limit(1)
+          .maybeSingle();
+
+        if (orderErr) {
+          server.log.error({ msg: "confirm-order-fetch-failed", orderErr });
+          return reply.status(500).send({ error: "Server error" });
+        }
+
+        if (currentOrder && currentOrder.status === "confirmed") {
+          return reply
+            .status(200)
+            .send({ message: "Order already confirmed", order: currentOrder });
+        }
+
         return reply
           .status(403)
           .send({ error: "Not allowed or order not found" });
+      }
 
       return reply.status(200).send({ data: updated });
     } catch (err: any) {
