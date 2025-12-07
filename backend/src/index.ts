@@ -84,7 +84,6 @@ async function start() {
       },
     });
 
-    // --- Register routes AFTER registering rate-limit & CORS
     server.register(milkingRoutes);
     server.register(webhookRoutes);
     server.register(ordersRoutes);
