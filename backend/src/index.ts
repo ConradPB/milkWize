@@ -69,6 +69,51 @@ async function start() {
 
     // --- Rate limiting (async register)
 
+    await server.register(rateLimit, {
+      // Defaults (global)
+      max: Number(process.env.RATE_LIMIT_DEFAULT_MAX || 100),
+      timeWindow: process.env.RATE_LIMIT_DEFAULT_WINDOW || "1 minute",
+
+      // Key per user if possible, otherwise per IP
+      keyGenerator: (req) => {
+        try {
+          const auth = String(req.headers.authorization || "")
+            .replace(/^Bearer\s+/i, "")
+            .trim();
+          if (auth) {
+            const parts = auth.split(".");
+            if (parts.length >= 2) {
+              const payload = JSON.parse(
+                Buffer.from(parts[1], "base64").toString("utf8")
+              );
+              if (payload && payload.sub) return String(payload.sub);
+            }
+          }
+        } catch (e) {
+          /* ignore decode errors; fallback to IP below */
+        }
+        // fallback to client IP
+        return String(req.headers["x-forwarded-for"] || req.ip || "unknown");
+      },
+
+      // Simple allowList using your env var list
+      allowList: (req) => {
+        const clientIp = String(req.headers["x-forwarded-for"] || req.ip || "");
+        return ipIsWhitelisted(clientIp, INTERNAL_IPS);
+      },
+
+      // Friendly error payload
+      errorResponseBuilder: (req, context) => {
+        const afterMs = Number((context as any)?.after || 0);
+        const retrySec = Math.ceil(afterMs / 1000);
+        return {
+          statusCode: 429,
+          error: "Too Many Requests",
+          message: `Rate limit exceeded, retry in ${retrySec}s`,
+        };
+      },
+    });
+
     server.register(milkingRoutes);
     server.register(webhookRoutes);
     server.register(ordersRoutes);
