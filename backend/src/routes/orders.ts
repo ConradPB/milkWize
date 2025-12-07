@@ -217,6 +217,12 @@ export default async function ordersRoutes(server: FastifyInstance) {
       if (!callerUid)
         return reply.status(403).send({ error: "Invalid user token" });
 
+      server.log.info({
+        msg: "confirm-debug-before-rpc",
+        orderId: id,
+        callerUid,
+      });
+
       // Call RPC that enforces ownership and updates the order
       const { data, error } = await supabaseAdmin.rpc("confirm_order", {
         _order_id: id,
