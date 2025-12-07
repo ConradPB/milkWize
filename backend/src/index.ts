@@ -68,21 +68,6 @@ async function start() {
     });
 
     // --- Rate limiting (async register)
-    await server.register(rateLimit, {
-      max: Number(process.env.RATE_LIMIT_DEFAULT_MAX || 100),
-      timeWindow: process.env.RATE_LIMIT_DEFAULT_WINDOW || "1 minute",
-      keyGenerator: (req) =>
-        String(req.headers["x-forwarded-for"] || req.ip || "unknown"),
-      errorResponseBuilder: (req, context) => {
-        const afterMs = Number((context as any)?.after || 0);
-        const retrySec = Math.ceil(afterMs / 1000);
-        return {
-          statusCode: 429,
-          error: "Too Many Requests",
-          message: `Rate limit exceeded, retry in ${retrySec}s`,
-        };
-      },
-    });
 
     server.register(milkingRoutes);
     server.register(webhookRoutes);
