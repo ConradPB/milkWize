@@ -229,6 +229,8 @@ export default async function ordersRoutes(server: FastifyInstance) {
         _caller: callerUid,
       });
 
+      server.log.info({ msg: "confirm-debug-after-rpc", rpcData, rpcError });
+
       if (error) {
         server.log.error({ msg: "RPC confirm_order failed", error });
         return reply.status(500).send({ error: "Server error" });
