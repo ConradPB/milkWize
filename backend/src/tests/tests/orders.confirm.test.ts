@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import ordersRoutes from "./../routes/orders";
+import ordersRoutes from "../../routes/orders";
 
 jest.mock("../src/supabase", () => {
   const supabaseAdminMock = {
@@ -10,7 +10,7 @@ jest.mock("../src/supabase", () => {
   return { supabaseAdmin: supabaseAdminMock };
 });
 
-import { supabaseAdmin } from "../src/supabase";
+import { supabaseAdmin } from "../../";
 
 describe("PATCH /api/orders/:id/confirm", () => {
   let server: ReturnType<typeof Fastify>;
