@@ -10,7 +10,7 @@ jest.mock("../src/supabase", () => {
   };
 });
 
-import { supabaseAdmin } from "../src/supabase";
+import { supabaseAdmin } from "../supabase";
 
 describe("POST /api/clients", () => {
   let server: ReturnType<typeof Fastify>;
