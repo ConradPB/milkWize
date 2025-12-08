@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import webhookRoutes from "../src/routes/webhook";
+import webhookRoutes from "../routes/webhook";
 import crypto from "crypto";
 
 describe("POST /api/webhook/payment", () => {
