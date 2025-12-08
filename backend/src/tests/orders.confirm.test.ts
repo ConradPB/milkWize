@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import ordersRoutes from "../routes/orders";
 
-jest.mock("../src/supabase", () => {
+jest.mock("../supabase", () => {
   const supabaseAdminMock = {
     auth: { getUser: jest.fn() },
     rpc: jest.fn(),
