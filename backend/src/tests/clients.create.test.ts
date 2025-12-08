@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import clientsRoutes from "../routes/clients";
 
-jest.mock("../src/supabase", () => {
+jest.mock("../supabase", () => {
   return {
     supabaseAdmin: {
       auth: { getUser: jest.fn() },
