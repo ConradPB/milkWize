@@ -10,7 +10,7 @@ jest.mock("../src/supabase", () => {
   return { supabaseAdmin: supabaseAdminMock };
 });
 
-import { supabaseAdmin } from "../../";
+import { supabaseAdmin } from "../../supabase";
 
 describe("PATCH /api/orders/:id/confirm", () => {
   let server: ReturnType<typeof Fastify>;
