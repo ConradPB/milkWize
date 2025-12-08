@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import clientsRoutes from "../src/routes/clients";
+import clientsRoutes from "../routes/clients";
 
 jest.mock("../src/supabase", () => {
   return {
