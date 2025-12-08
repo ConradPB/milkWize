@@ -1,7 +1,11 @@
 module.exports = {
-preset: 'ts-jest',
-testEnvironment: 'node',
-testMatch: ['**/src/tests/**/*.test.ts'],
-collectCoverage: true,
-coverageDirectory: 'coverage',
+  preset: "ts-jest",
+  testEnvironment: "node",
+  testTimeout: 20000,
+  globals: {
+    "ts-jest": {
+      tsconfig: "tsconfig.json"
+    }
+  },
+  verbose: true
 };
