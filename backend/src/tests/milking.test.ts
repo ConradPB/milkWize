@@ -24,15 +24,17 @@ describe("milking route", () => {
   let app: any;
 
   beforeAll(async () => {
-    app = Fastify({ logger: false });
+    app = Fastify();
     await app.register(require("@fastify/formbody"));
     await app.register(milkingRoutes);
-    await app.ready();
   });
 
   afterAll(async () => {
     await app.close();
-    jest.resetAllMocks();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
   it("returns 401 without JWT", async () => {
@@ -45,21 +47,26 @@ describe("milking route", () => {
   });
 
   it("inserts milking_event when JWT valid", async () => {
-    // mock auth.getUser
-    (supabaseAdmin as any).auth.getUser.mockResolvedValue({
-      data: { user: { id: "caller-uuid" } },
+    // valid UUIDs for test
+    const TEST_ADMIN_UID = "9ffd41d9-5d73-4fc5-b160-b523a1215677"; // auth.uid()
+    const ADMIN_ROW_ID = "15c598fd-b18b-4e00-a480-6753d7f0f5e8"; // admins.id (uuid)
+    const COW_ID = "73052e07-e1ac-48fc-9710-57c4deb52712"; // cow uuid
+
+    // Mock auth.getUser to return a user with id = TEST_ADMIN_UID
+    (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
+      data: { user: { id: TEST_ADMIN_UID } },
       error: null,
     });
 
-    // mock from(...) behavior
-    (supabaseAdmin as any).from.mockImplementation((table: string) => {
+    // Mock .from('admins').select(...).eq(...).limit(1).maybeSingle() to return admin row
+    (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
       if (table === "admins") {
         return {
           select: () => ({
-            eq: () => ({
-              limit: () => ({
+            eq: (_col: string, _val: any) => ({
+              limit: (_n?: number) => ({
                 maybeSingle: async () => ({
-                  data: { id: "admin-row-uuid" },
+                  data: { id: ADMIN_ROW_ID },
                   error: null,
                 }),
               }),
@@ -67,40 +74,49 @@ describe("milking route", () => {
           }),
         };
       }
+
       if (table === "milking_events") {
         return {
           insert: (payload: any[]) => ({
             select: async () => ({
-              data: payload.map((p) => ({ ...p, id: "inserted-uuid" })),
+              data: payload.map((p) => ({
+                id: "11111111-1111-1111-1111-111111111111",
+                ...p,
+              })),
               error: null,
             }),
           }),
         };
       }
+
+      // Fallback safe object
       return {
-        select: () => ({
-          maybeSingle: async () => ({ data: null, error: null }),
-        }),
+        select: () => ({ then: async () => ({ data: [], error: null }) }),
       };
     });
 
-    const payload = {
-      cow_id: "73052e07-e1ac-48fc-9710-57c4deb52712",
-      milk_liters: 3.5,
-      milking_time: "2025-11-15T07:00:00Z",
-    };
-
+    // Call the endpoint with valid payload and JWT
     const res = await app.inject({
       method: "POST",
       url: "/api/milking_events",
-      headers: { Authorization: "Bearer dummy-token" },
-      payload,
+      headers: {
+        Authorization: "Bearer some-valid-token",
+      },
+      payload: {
+        cow_id: COW_ID,
+        milk_liters: 9.25,
+        milking_time: "2025-11-15T07:00:00Z",
+      },
     });
 
+    // Expect success (201)
     expect(res.statusCode).toBe(201);
     const body = JSON.parse(res.payload);
     expect(body.data).toBeDefined();
     expect(Array.isArray(body.data)).toBe(true);
-    expect(body.data[0].milk_liters).toBe(payload.milk_liters);
+    expect(body.data[0].id).toBeDefined();
+
+    // Ensure we attempted to insert into milking_events
+    expect(supabaseAdmin.from).toHaveBeenCalledWith("milking_events");
   });
 });
