@@ -1,15 +1,16 @@
+// src/tests/milking.test.ts
 import Fastify from "fastify";
 import milkingRoutes from "../routes/milking";
 
-// mocked supabase
-const supabaseAdminMock = {
-  auth: {
-    getUser: jest.fn(),
-  },
-  from: jest.fn(),
-};
-
-jest.mock("../supabase", () => ({ supabaseAdmin: supabaseAdminMock }));
+// Inline mock inside factory to avoid TDZ/init ordering issues
+jest.mock("../supabase", () => {
+  const supabaseAdmin = {
+    auth: { getUser: jest.fn() },
+    from: jest.fn(),
+    rpc: jest.fn(),
+  };
+  return { supabaseAdmin };
+});
 
 import { supabaseAdmin } from "../supabase";
 
@@ -18,7 +19,6 @@ describe("milking route", () => {
 
   beforeAll(async () => {
     app = Fastify({ logger: false });
-    // register same plugin as production code
     await app.register(require("@fastify/formbody"));
     await app.register(milkingRoutes);
     await app.ready();
@@ -39,49 +39,44 @@ describe("milking route", () => {
   });
 
   it("inserts milking_event when JWT valid", async () => {
-    // 1) auth.getUser returns valid user id
-    (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
+    // mock auth.getUser
+    (supabaseAdmin as any).auth.getUser.mockResolvedValue({
       data: { user: { id: "caller-uuid" } },
       error: null,
     });
 
-    // 2) from('admins').select(...).maybeSingle() -> admin row
-    (supabaseAdmin.from as unknown as jest.Mock).mockImplementation(
-      (table: string) => {
-        if (table === "admins") {
-          return {
-            select: () => ({
-              eq: () => ({
-                limit: () => ({
-                  maybeSingle: async () => ({
-                    data: { id: "admin-row-uuid" },
-                    error: null,
-                  }),
+    // mock from(...) behavior
+    (supabaseAdmin as any).from.mockImplementation((table: string) => {
+      if (table === "admins") {
+        return {
+          select: () => ({
+            eq: () => ({
+              limit: () => ({
+                maybeSingle: async () => ({
+                  data: { id: "admin-row-uuid" },
+                  error: null,
                 }),
               }),
             }),
-          };
-        }
-
-        if (table === "milking_events") {
-          return {
-            insert: (payload: any[]) => ({
-              select: async () => ({
-                data: payload.map((p) => ({ ...p, id: "inserted-uuid" })),
-                error: null,
-              }),
-            }),
-          };
-        }
-
-        // default safe object
-        return {
-          select: () => ({
-            maybeSingle: async () => ({ data: null, error: null }),
           }),
         };
       }
-    );
+      if (table === "milking_events") {
+        return {
+          insert: (payload: any[]) => ({
+            select: async () => ({
+              data: payload.map((p) => ({ ...p, id: "inserted-uuid" })),
+              error: null,
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      };
+    });
 
     const payload = {
       cow_id: "73052e07-e1ac-48fc-9710-57c4deb52712",
