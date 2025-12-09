@@ -1,4 +1,3 @@
-// src/tests/clients.create.test.ts
 import Fastify from "fastify";
 import clientsRoutes from "../routes/clients";
 
