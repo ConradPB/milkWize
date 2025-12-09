@@ -1,13 +1,15 @@
+// src/tests/clients.create.test.ts
 import Fastify from "fastify";
 import clientsRoutes from "../routes/clients";
 
-// Build a flexible mock for supabaseAdmin used by clients routes
-const supabaseAdminMock = {
-  auth: { getUser: jest.fn() },
-  from: jest.fn(),
-};
-
-jest.mock("../supabase", () => ({ supabaseAdmin: supabaseAdminMock }));
+jest.mock("../supabase", () => {
+  const supabaseAdmin = {
+    auth: { getUser: jest.fn() },
+    from: jest.fn(),
+    rpc: jest.fn(),
+  };
+  return { supabaseAdmin };
+});
 
 import { supabaseAdmin } from "../supabase";
 
@@ -27,46 +29,42 @@ describe("POST /api/clients", () => {
   });
 
   it("Insert new client -> 201", async () => {
-    // admin auth
-    (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
+    (supabaseAdmin as any).auth.getUser.mockResolvedValue({
       data: { user: { id: "caller-uuid" } },
       error: null,
     });
 
-    // mock .from: first call will be clients.insert
-    (supabaseAdmin.from as unknown as jest.Mock).mockImplementation(
-      (table: string) => {
-        if (table === "admins") {
-          return {
-            select: () => ({
-              eq: () => ({
-                limit: () => ({
-                  maybeSingle: async () => ({
-                    data: { id: "admin-uuid" },
-                    error: null,
-                  }),
+    (supabaseAdmin as any).from.mockImplementation((table: string) => {
+      if (table === "admins") {
+        return {
+          select: () => ({
+            eq: () => ({
+              limit: () => ({
+                maybeSingle: async () => ({
+                  data: { id: "admin-uuid" },
+                  error: null,
                 }),
               }),
             }),
-          };
-        }
-        if (table === "clients") {
-          return {
-            insert: (payload: any[]) => ({
-              select: async () => ({
-                data: [{ id: "new-client-id", ...payload[0] }],
-                error: null,
-              }),
-            }),
-          };
-        }
-        return {
-          select: () => ({
-            maybeSingle: async () => ({ data: null, error: null }),
           }),
         };
       }
-    );
+      if (table === "clients") {
+        return {
+          insert: (payload: any[]) => ({
+            select: async () => ({
+              data: [{ id: "new-client-id", ...payload[0] }],
+              error: null,
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      };
+    });
 
     const res = await app.inject({
       method: "POST",
@@ -87,70 +85,62 @@ describe("POST /api/clients", () => {
   });
 
   it("Duplicate phone -> returns existing client 200", async () => {
-    // admin auth
-    (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
+    (supabaseAdmin as any).auth.getUser.mockResolvedValue({
       data: { user: { id: "caller-uuid" } },
       error: null,
     });
 
-    // Simulate insert failing with duplicate then select returning existing
-    (supabaseAdmin.from as unknown as jest.Mock).mockImplementation(
-      (table: string) => {
-        if (table === "admins") {
-          return {
-            select: () => ({
-              eq: () => ({
-                limit: () => ({
-                  maybeSingle: async () => ({
-                    data: { id: "admin-uuid" },
-                    error: null,
-                  }),
-                }),
-              }),
-            }),
-          };
-        }
-        if (table === "clients") {
-          return {
-            insert: (payload: any[]) => ({
-              select: async () => ({
-                data: null,
-                error: { code: "23505", message: "duplicate key" },
-              }),
-            }),
-            select: () => ({
-              eq: () => ({
-                limit: () => ({
-                  maybeSingle: async () => ({
-                    data: {
-                      id: "existing-client-id",
-                      phone: "+256700000000",
-                      name: "Existing",
-                    },
-                    error: null,
-                  }),
-                }),
-              }),
-            }),
-          };
-        }
+    (supabaseAdmin as any).from.mockImplementation((table: string) => {
+      if (table === "admins") {
         return {
           select: () => ({
-            maybeSingle: async () => ({ data: null, error: null }),
+            eq: () => ({
+              limit: () => ({
+                maybeSingle: async () => ({
+                  data: { id: "admin-uuid" },
+                  error: null,
+                }),
+              }),
+            }),
           }),
         };
       }
-    );
+      if (table === "clients") {
+        return {
+          insert: (payload: any[]) => ({
+            select: async () => ({
+              data: null,
+              error: { code: "23505", message: "duplicate key" },
+            }),
+          }),
+          select: () => ({
+            eq: () => ({
+              limit: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    id: "existing-client-id",
+                    phone: "+256700000000",
+                    name: "Existing",
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      };
+    });
 
     const res = await app.inject({
       method: "POST",
       url: "/api/clients",
       headers: { Authorization: "Bearer dummy" },
-      payload: {
-        name: "Any",
-        phone: "+256700000000",
-        address: "Somewhere",
-      },
+      payload: { name: "Any", phone: "+256700000000", address: "Somewhere" },
     });
 
     expect(res.statusCode).toBe(200);
