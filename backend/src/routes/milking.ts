@@ -2,6 +2,26 @@ import { FastifyInstance } from "fastify";
 import { supabaseAdmin } from "../supabase";
 import { isValidUuid } from "../utils";
 
+/** resolve admin id from JWT (same pattern as clients) */
+async function resolveAdminId(userJwt?: string | null) {
+  if (!userJwt) return { ok: false, code: 401, msg: "Missing JWT" };
+  const userRes = await supabaseAdmin.auth.getUser(userJwt);
+  if (userRes.error) return { ok: false, code: 403, msg: "Invalid user token" };
+  const userId = userRes.data?.user?.id;
+  if (!userId) return { ok: false, code: 403, msg: "Invalid user token" };
+
+  const { data: adminRow, error } = await supabaseAdmin
+    .from("admins")
+    .select("id")
+    .eq("auth_uid", userId)
+    .limit(1)
+    .maybeSingle();
+  if (error) return { ok: false, code: 500, msg: "Server error" };
+  if (!adminRow)
+    return { ok: false, code: 403, msg: "User not mapped to admin" };
+  return { ok: true, adminId: adminRow.id };
+}
+
 export default async function milkingRoutes(server: FastifyInstance) {
   server.post("/api/milking_events", async (request, reply) => {
     try {
@@ -24,16 +44,17 @@ export default async function milkingRoutes(server: FastifyInstance) {
           .send({ error: "Missing milk_liters or milking_time" });
       }
 
-      // If cow_tag provided, resolve it using anon key via direct supabase call (optional)
+      // If cow_tag provided, resolve it using anon key via REST (optional)
       if (!cow_id && cow_tag) {
         const anonKey = process.env.SUPABASE_ANON_KEY;
         if (!anonKey) {
           server.log.warn("SUPABASE_ANON_KEY not set; cannot resolve cow_tag");
-          return reply.status(500).send({
-            error: "Server misconfiguration: missing SUPABASE_ANON_KEY",
-          });
+          return reply
+            .status(500)
+            .send({
+              error: "Server misconfiguration: missing SUPABASE_ANON_KEY",
+            });
         }
-        // Use the REST API with anon key to look up cow by tag
         const res = await fetch(
           `${process.env.SUPABASE_URL}/rest/v1/cows?select=id,tag&tag=eq.${encodeURIComponent(cow_tag)}`,
           {
@@ -60,70 +81,25 @@ export default async function milkingRoutes(server: FastifyInstance) {
         cow_id = arr[0].id;
       }
 
-      // Validate cow_id
-      if (!isValidUuid(String(cow_id))) {
+      if (!isValidUuid(String(cow_id)))
         return reply
           .status(400)
           .send({ error: "cow_id must be a valid UUID", cow_id });
-      }
 
-      // Resolve user info via supabase admin client (service role)
-      const userRes = await supabaseAdmin.auth.getUser(userJwt);
-      if (userRes.error) {
-        server.log.error({
-          msg: "supabaseAdmin.auth.getUser failed",
-          error: userRes.error,
-        });
-        return reply
-          .status(403)
-          .send({ error: "Failed to resolve user from token" });
-      }
-      const userId = userRes.data?.user?.id;
-      if (!userId) {
-        server.log.error({
-          msg: "No user id in supabase auth response",
-          userRes,
-        });
-        return reply.status(403).send({ error: "Invalid user token" });
-      }
-
-      // Query admins table to find the mapped admin id (UUID)
-      const { data: adminRows, error: adminError } = await supabaseAdmin
-        .from("admins")
-        .select("id,auth_uid")
-        .eq("auth_uid", userId)
-        .limit(1)
-        .maybeSingle();
-
-      if (adminError) {
-        server.log.error({ msg: "Error querying admins table", adminError });
-        return reply
-          .status(500)
-          .send({ error: "Server failed to lookup admin" });
-      }
-      if (!adminRows) {
-        return reply.status(403).send({ error: "User not mapped to admin" });
-      }
-
-      const adminId = (adminRows as any).id;
-      if (!isValidUuid(String(adminId))) {
-        server.log.error({ msg: "Resolved admin id not uuid", adminId });
-        return reply
-          .status(400)
-          .send({ error: "Resolved admin id is not a valid UUID", adminId });
-      }
+      // Resolve admin id
+      const auth = await resolveAdminId(userJwt);
+      if (!auth.ok) return reply.status(auth.code).send({ error: auth.msg });
+      const adminId = auth.adminId;
 
       server.log.info({
-        msg: "Inserting milking_event - resolved values (server-resolve)",
+        msg: "Inserting milking_event",
         cow_id,
-        cow_id_type: typeof cow_id,
         adminId,
-        adminId_type: typeof adminId,
         milk_liters,
         milking_time,
       });
 
-      // Insert milking_event using service role
+      // Insert and return inserted row(s)
       const { data, error } = await supabaseAdmin
         .from("milking_events")
         .insert([
@@ -133,7 +109,8 @@ export default async function milkingRoutes(server: FastifyInstance) {
             milk_liters,
             milking_time,
           },
-        ]);
+        ])
+        .select();
 
       if (error) {
         server.log.error({ msg: "Supabase insert error", error });
