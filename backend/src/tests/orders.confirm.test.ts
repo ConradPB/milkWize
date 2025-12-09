@@ -1,41 +1,14 @@
+// src/tests/orders.confirm.test.ts
 import Fastify from "fastify";
 import ordersRoutes from "../routes/orders";
 
-jest.mock("../supabase", () => {
-  const supabaseAdmin: any = {
-    auth: {
-      getUser: jest.fn(),
-    },
-    rpc: jest.fn(),
-    from: jest.fn(),
-  };
+const supabaseAdminMock: any = {
+  auth: { getUser: jest.fn() },
+  rpc: jest.fn(),
+  from: jest.fn(),
+};
 
-  // default from for admins lookup
-  supabaseAdmin.from.mockImplementation((table: string) => {
-    if (table === "admins") {
-      return {
-        select: () => ({
-          eq: () => ({
-            limit: () => ({
-              maybeSingle: async () => ({
-                data: { id: "admin-uuid" },
-                error: null,
-              }),
-            }),
-          }),
-        }),
-      };
-    }
-    // fallback
-    return {
-      select: () => ({
-        maybeSingle: async () => ({ data: null, error: null }),
-      }),
-    };
-  });
-
-  return { supabaseAdmin };
-});
+jest.mock("../supabase", () => ({ supabaseAdmin: supabaseAdminMock }));
 
 import { supabaseAdmin } from "../supabase";
 
@@ -51,7 +24,7 @@ describe("PATCH /api/orders/:id/confirm", () => {
 
   afterAll(async () => {
     await app.close();
-    jest.clearAllMocks();
+    jest.resetAllMocks();
   });
 
   it("RPC returns row -> 200 with data", async () => {
@@ -60,17 +33,9 @@ describe("PATCH /api/orders/:id/confirm", () => {
       error: null,
     });
 
-    // Mock rpc to return updated order row
+    // rpc returns the updated order row as array
     (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
-      data: [
-        {
-          id: "order-1",
-          client_id: "client-1",
-          status: "confirmed",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ],
+      data: [{ id: "order-1", status: "confirmed", client_id: "client-1" }],
       error: null,
     });
 
@@ -92,15 +57,41 @@ describe("PATCH /api/orders/:id/confirm", () => {
       error: null,
     });
 
-    // rpc returns empty array -> no row changed (already confirmed)
+    // rpc returns empty array (already confirmed)
     (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
       data: [],
       error: null,
     });
 
+    // The route expects us to interpret empty -> already confirmed and fetch order.
+    // Mock a subsequent .from('orders').select(...) to return the order row.
+    (supabaseAdmin.from as unknown as jest.Mock).mockImplementation(
+      (table: string) => {
+        if (table === "orders") {
+          return {
+            select: () => ({
+              eq: () => ({
+                limit: () => ({
+                  maybeSingle: async () => ({
+                    data: { id: "order-1", status: "confirmed" },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+          }),
+        };
+      }
+    );
+
     const res = await app.inject({
       method: "PATCH",
-      url: "/api/orders/order-2/confirm",
+      url: "/api/orders/order-1/confirm",
       headers: { Authorization: "Bearer dummy" },
     });
 
@@ -116,15 +107,14 @@ describe("PATCH /api/orders/:id/confirm", () => {
       error: null,
     });
 
-    // simulate RPC error
     (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
       data: null,
-      error: { message: "something bad" },
+      error: { message: "rpc failed" },
     });
 
     const res = await app.inject({
       method: "PATCH",
-      url: "/api/orders/order-3/confirm",
+      url: "/api/orders/order-1/confirm",
       headers: { Authorization: "Bearer dummy" },
     });
 
