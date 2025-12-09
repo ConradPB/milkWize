@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import clientsRoutes from "../routes/clients";
 
+// Provide a mocked supabaseAdmin factory. from is a jest.fn so we it can be over ridden per-test.
 jest.mock("../supabase", () => {
   const supabaseAdmin: any = {
     auth: {
@@ -9,7 +10,7 @@ jest.mock("../supabase", () => {
     from: jest.fn(),
   };
 
-  // dispatcher for .from(table)
+  // Default behavior for .from('admins') used by the route to map JWT -> admin id
   supabaseAdmin.from.mockImplementation((table: string) => {
     if (table === "admins") {
       return {
@@ -26,32 +27,7 @@ jest.mock("../supabase", () => {
       };
     }
 
-    if (table === "clients") {
-      // We will inspect later by test using mockResolvedValueOnce/ReturnValueOnce
-      return {
-        insert: (payload: any[]) => ({
-          select: async () => ({
-            data: [{ id: "new-client-id", ...payload[0] }],
-            error: null,
-          }),
-        }),
-        select: () => ({
-          eq: () => ({
-            limit: () => ({
-              maybeSingle: async () => ({
-                data: {
-                  id: "existing-client-id",
-                  name: "Seed Admin",
-                  phone: "+256700000000",
-                },
-                error: null,
-              }),
-            }),
-          }),
-        }),
-      };
-    }
-
+    // Default fallback for other tables
     return {
       select: () => ({
         maybeSingle: async () => ({ data: null, error: null }),
@@ -86,28 +62,30 @@ describe("POST /api/clients", () => {
       error: null,
     });
 
-    // Mock clients.insert to return created client
-    supabaseAdmin.from.mockImplementationOnce((table: string) => {
-      if (table === "clients") {
+    // Override .from behavior for this test: clients.insert -> return created client
+    (supabaseAdmin.from as unknown as jest.Mock).mockImplementationOnce(
+      (table: string) => {
+        if (table === "clients") {
+          return {
+            insert: (payload: any[]) => ({
+              select: async () => ({
+                data: [{ id: "new-client-id", ...payload[0] }],
+                error: null,
+              }),
+            }),
+          };
+        }
+        // fallback uses admins default (set earlier)
         return {
-          insert: (payload: any[]) => ({
-            select: async () => ({
-              data: [{ id: "new-client-id", ...payload[0] }],
+          select: () => ({
+            maybeSingle: async () => ({
+              data: { id: "admin-uuid" },
               error: null,
             }),
           }),
         };
       }
-      // fallback for admins handled above by default mock (but we override admins earlier)
-      return {
-        select: () => ({
-          maybeSingle: async () => ({
-            data: { id: "admin-uuid" },
-            error: null,
-          }),
-        }),
-      };
-    });
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -134,44 +112,47 @@ describe("POST /api/clients", () => {
       error: null,
     });
 
-    // Make insert attempt return a Postgres duplicate error structure
-    supabaseAdmin.from.mockImplementationOnce((table: string) => {
-      if (table === "clients") {
-        return {
-          insert: (payload: any[]) => ({
-            select: async () => ({
-              data: null,
-              error: {
-                code: "23505",
-                message: "duplicate key value violates unique constraint",
-              },
+    // For this test: clients.insert returns unique-violation; then clients.select returns existing
+    (supabaseAdmin.from as unknown as jest.Mock).mockImplementationOnce(
+      (table: string) => {
+        if (table === "clients") {
+          return {
+            insert: (payload: any[]) => ({
+              // Simulate PG unique violation
+              select: async () => ({
+                data: null,
+                error: {
+                  code: "23505",
+                  message: "duplicate key value violates unique constraint",
+                },
+              }),
             }),
-          }),
-          select: () => ({
-            eq: () => ({
-              limit: () => ({
-                maybeSingle: async () => ({
-                  data: {
-                    id: "existing-client-id",
-                    phone: "+256700000000",
-                    name: "Existing",
-                  },
-                  error: null,
+            select: () => ({
+              eq: () => ({
+                limit: () => ({
+                  maybeSingle: async () => ({
+                    data: {
+                      id: "existing-client-id",
+                      phone: "+256700000000",
+                      name: "Existing",
+                    },
+                    error: null,
+                  }),
                 }),
               }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            maybeSingle: async () => ({
+              data: { id: "admin-uuid" },
+              error: null,
             }),
           }),
         };
       }
-      return {
-        select: () => ({
-          maybeSingle: async () => ({
-            data: { id: "admin-uuid" },
-            error: null,
-          }),
-        }),
-      };
-    });
+    );
 
     const res = await app.inject({
       method: "POST",
