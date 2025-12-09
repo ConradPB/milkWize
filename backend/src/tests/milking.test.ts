@@ -2,14 +2,52 @@ import Fastify from "fastify";
 import milkingRoutes from "../routes/milking";
 
 jest.mock("../supabase", () => {
-  return {
-    supabaseAdmin: {
-      auth: {
-        getUser: jest.fn(),
-      },
-      from: jest.fn(),
+  // Replace supabaseAdmin.from with a dispatcher that returns
+  // objects shaped like the real supabase-js chaining.
+  const supabaseAdmin: any = {
+    auth: {
+      getUser: jest.fn(),
     },
+    from: jest.fn(),
   };
+
+  // Implement a simple dispatcher for .from(table)
+  supabaseAdmin.from.mockImplementation((table: string) => {
+    if (table === "admins") {
+      return {
+        select: () => ({
+          eq: () => ({
+            limit: () => ({
+              maybeSingle: async () => ({
+                data: { id: "admin-uuid" },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      };
+    }
+
+    if (table === "milking_events") {
+      return {
+        insert: (payload: any[]) => ({
+          select: async () => ({
+            data: [{ id: "milking-1", ...payload[0] }],
+            error: null,
+          }),
+        }),
+      };
+    }
+
+    // Default fallback for other tables (not used in this test)
+    return {
+      select: () => ({
+        maybeSingle: async () => ({ data: null, error: null }),
+      }),
+    };
+  });
+
+  return { supabaseAdmin };
 });
 
 import { supabaseAdmin } from "../supabase";
@@ -19,7 +57,6 @@ describe("milking route", () => {
 
   beforeAll(async () => {
     app = Fastify({ logger: false });
-    // use the scoped package plugin
     await app.register(require("@fastify/formbody"));
     await app.register(milkingRoutes);
     await app.ready();
@@ -40,34 +77,10 @@ describe("milking route", () => {
   });
 
   it("inserts milking_event when JWT valid", async () => {
-    // mock auth.getUser to return a user (the server will then map to admin)
+    // Mock auth.getUser to return a user id so admin mapping succeeds
     (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
       data: { user: { id: "caller-uuid" } },
       error: null,
-    });
-
-    // Mock admin lookup: .from('admins').select(...).eq(...).limit(1).maybeSingle()
-    (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-      select: () => ({
-        eq: () => ({
-          limit: () => ({
-            maybeSingle: async () => ({
-              data: { id: "admin-uuid" },
-              error: null,
-            }),
-          }),
-        }),
-      }),
-    });
-
-    // Mock insert to milking_events table
-    (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-      insert: () => ({
-        select: async () => ({
-          data: [{ id: "milking-1", milk_liters: 5 }],
-          error: null,
-        }),
-      }),
     });
 
     const payload = {
