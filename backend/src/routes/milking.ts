@@ -1,4 +1,3 @@
-// src/routes/milking.ts
 import { FastifyInstance } from "fastify";
 import { supabaseAdmin } from "../supabase";
 import { isValidUuid } from "../utils";
@@ -30,11 +29,9 @@ export default async function milkingRoutes(server: FastifyInstance) {
         const anonKey = process.env.SUPABASE_ANON_KEY;
         if (!anonKey) {
           server.log.warn("SUPABASE_ANON_KEY not set; cannot resolve cow_tag");
-          return reply
-            .status(500)
-            .send({
-              error: "Server misconfiguration: missing SUPABASE_ANON_KEY",
-            });
+          return reply.status(500).send({
+            error: "Server misconfiguration: missing SUPABASE_ANON_KEY",
+          });
         }
         // Use the REST API with anon key to look up cow by tag
         const res = await fetch(
