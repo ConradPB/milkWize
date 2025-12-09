@@ -1,4 +1,3 @@
-// src/tests/milking.test.ts
 import Fastify from "fastify";
 import milkingRoutes from "../routes/milking";
 
