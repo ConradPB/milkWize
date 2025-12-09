@@ -2,8 +2,8 @@ import { FastifyInstance } from "fastify";
 import { supabaseAdmin } from "../supabase";
 import { isValidUuid } from "../utils";
 
-/** Helper: verify JWT and that caller maps to an admin; returns admin id or null. */
-async function ensureAdmin(userJwt: string | undefined) {
+/** small helper to resolve and verify admin; returns {ok, code, msg, adminId?} */
+async function ensureAdmin(userJwt?: string | null) {
   if (!userJwt) return { ok: false, code: 401, msg: "Missing JWT" };
   const userRes = await supabaseAdmin.auth.getUser(userJwt);
   if (userRes.error) return { ok: false, code: 403, msg: "Invalid user token" };
@@ -20,7 +20,6 @@ async function ensureAdmin(userJwt: string | undefined) {
   if (adminError) return { ok: false, code: 500, msg: "Server error" };
   if (!adminRow)
     return { ok: false, code: 403, msg: "User not mapped to admin" };
-
   return { ok: true, adminId: adminRow.id };
 }
 
@@ -87,7 +86,7 @@ export default async function clientsRoutes(server: FastifyInstance) {
     }
   });
 
-  // List clients (admin-only? if so keep admin check)
+  // List clients - ADMIN ONLY (changed to require admin)
   server.get("/api/clients", async (request, reply) => {
     try {
       const userJwt = (request.headers.authorization || "")
@@ -171,7 +170,7 @@ export default async function clientsRoutes(server: FastifyInstance) {
     }
   });
 
-  // Admin: Link auth_user_id -> client
+  // Admin: Link auth_user_id -> client (POST /api/clients/:id/link)
   server.post("/api/clients/:id/link", async (request, reply) => {
     try {
       const userJwt = (request.headers.authorization || "")
@@ -188,9 +187,9 @@ export default async function clientsRoutes(server: FastifyInstance) {
       if (!auth_user_id || !isValidUuid(String(auth_user_id)))
         return reply.status(400).send({ error: "Invalid auth_user_id" });
 
+      // check auth user exists via RPC
       const { data: targetUserRow, error: targetUserErr } =
         await supabaseAdmin.rpc("get_auth_user_by_id", { _id: auth_user_id });
-
       if (targetUserErr) {
         server.log.error({
           msg: "Error querying auth.users via RPC",
@@ -230,7 +229,7 @@ export default async function clientsRoutes(server: FastifyInstance) {
     }
   });
 
-  // Client self-link: signed-in user claims a client by phone or id (only if unclaimed)
+  // Client self-link: POST /api/clients/link-self
   server.post("/api/clients/link-self", async (request, reply) => {
     try {
       const userJwt = (request.headers.authorization || "")
@@ -290,7 +289,7 @@ export default async function clientsRoutes(server: FastifyInstance) {
     }
   });
 
-  // Client: get own client row + orders summary
+  // Client: get own client row + orders summary - unchanged
   server.get("/api/clients/me", async (request, reply) => {
     try {
       const rawAuth = (request.headers.authorization || "").trim();
@@ -302,7 +301,7 @@ export default async function clientsRoutes(server: FastifyInstance) {
       const userJwt = rawAuth.replace(/^Bearer\s+/i, "").trim();
       if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
 
-      // prefer supabaseAdmin.auth.getUser but fallback to JWT decode
+      // prefer service-client resolution, fallback to decode
       let callerUid: string | null = null;
       const userRes = await supabaseAdmin.auth.getUser(userJwt);
       if (!userRes.error && userRes.data?.user?.id)
@@ -316,11 +315,8 @@ export default async function clientsRoutes(server: FastifyInstance) {
             );
             if (payload?.sub) callerUid = String(payload.sub);
           }
-        } catch (e) {
-          // ignore decode errors
-        }
+        } catch (e) {}
       }
-
       if (!callerUid)
         return reply.status(403).send({ error: "Invalid or unresolvable JWT" });
 
