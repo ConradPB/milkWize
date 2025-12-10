@@ -4,7 +4,6 @@ import { isValidUuid } from "../utils";
 
 export default async function paymentsRoutes(server: FastifyInstance) {
   // Create manual payment (admin records)
-
   server.post("/api/payments", async (request, reply) => {
     try {
       const userJwt = (request.headers.authorization || "")
@@ -12,14 +11,25 @@ export default async function paymentsRoutes(server: FastifyInstance) {
         .trim();
       if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
 
-      const { order_id, amount, method, txn_ref } = request.body as any;
-      if (!order_id || amount == null || !method)
+      const { order_id } = request.body as any;
+      const amountRaw = (request.body as any).amount;
+      const method = (request.body as any).method;
+      const txn_ref = (request.body as any).txn_ref;
+
+      if (!order_id || amountRaw == null || !method)
         return reply
           .status(400)
           .send({ error: "Missing order_id, amount or method" });
 
       if (!isValidUuid(String(order_id)))
         return reply.status(400).send({ error: "order_id must be UUID" });
+
+      const amount = Number(amountRaw);
+      if (Number.isNaN(amount)) {
+        return reply
+          .status(400)
+          .send({ error: "amount must be a valid number" });
+      }
 
       // Verify admin
       const userRes = await supabaseAdmin.auth.getUser(userJwt);
@@ -80,7 +90,7 @@ export default async function paymentsRoutes(server: FastifyInstance) {
 
       const q = request.query as any;
       const { order_id } = q;
-      let query = supabaseAdmin.from("payments").select("*");
+      let query: any = supabaseAdmin.from("payments").select("*");
       if (order_id) {
         if (!isValidUuid(String(order_id)))
           return reply.status(400).send({ error: "order_id must be UUID" });
