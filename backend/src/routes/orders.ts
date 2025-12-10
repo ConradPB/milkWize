@@ -12,10 +12,11 @@ export default async function ordersRoutes(server: FastifyInstance) {
       if (!userJwt) return reply.status(401).send({ error: "Missing JWT" });
 
       const body = (request.body || {}) as any;
-      const { client_id, scheduled_date, scheduled_window, quantity_liters } =
-        body;
+      const { client_id, scheduled_date, scheduled_window } = body;
+      const quantity_liters_raw = (body.quantity_liters ??
+        body.quantity) as any;
 
-      if (!client_id || !scheduled_date || quantity_liters == null) {
+      if (!client_id || !scheduled_date || quantity_liters_raw == null) {
         return reply.status(400).send({
           error:
             "Missing required fields: client_id, scheduled_date, quantity_liters",
@@ -25,6 +26,14 @@ export default async function ordersRoutes(server: FastifyInstance) {
         return reply
           .status(400)
           .send({ error: "client_id must be a valid UUID" });
+      }
+
+      // coerce quantity_liters to number
+      const quantity_liters = Number(quantity_liters_raw);
+      if (Number.isNaN(quantity_liters)) {
+        return reply
+          .status(400)
+          .send({ error: "quantity_liters must be a valid number" });
       }
 
       // Resolve user -> admin id
@@ -83,7 +92,7 @@ export default async function ordersRoutes(server: FastifyInstance) {
       const { client_id, status, scheduled_date } = q;
 
       // build filter
-      let query = supabaseAdmin.from("orders").select("*");
+      let query: any = supabaseAdmin.from("orders").select("*");
 
       if (client_id) {
         if (!isValidUuid(String(client_id)))
@@ -124,6 +133,16 @@ export default async function ordersRoutes(server: FastifyInstance) {
       ];
       const updates: any = {};
       for (const k of allowed) if (k in body) updates[k] = body[k];
+
+      // If quantity_liters present, coerce & validate
+      if ("quantity_liters" in updates) {
+        const q = Number(updates.quantity_liters);
+        if (Number.isNaN(q))
+          return reply
+            .status(400)
+            .send({ error: "quantity_liters must be number" });
+        updates.quantity_liters = q;
+      }
 
       if (Object.keys(updates).length === 0)
         return reply.status(400).send({ error: "No valid fields to update" });
