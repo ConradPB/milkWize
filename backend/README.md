@@ -199,7 +199,7 @@ All backend logic is covered by Jest tests.
 
 Run tests:
 
-```bash
+```
 pnpm test
 ```
 
