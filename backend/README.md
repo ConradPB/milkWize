@@ -123,3 +123,40 @@ Strict access control is enforced at the API level.
 - `POST /api/webhook/payment` — HMAC-verified payment webhook
 
 ---
+
+## Environment Variables
+
+Create a `.env` file (or set variables in Render):
+
+```
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_ANON_KEY=
+
+WEBHOOK_SECRET=
+
+CORS_ORIGIN=
+RATE_LIMIT_DEFAULT_MAX=100
+RATE_LIMIT_DEFAULT_WINDOW=1 minute
+
+PORT=8080
+NODE_ENV=development
+```
+
+### Notes
+
+- `SUPABASE_SERVICE_ROLE_KEY` **must never be exposed publicly**
+- `SUPABASE_ANON_KEY` is used for limited lookup flows
+- `WEBHOOK_SECRET` secures webhook signatures
+
+---
+
+## Supabase Requirements
+
+### Admin Mapping
+
+Admins must exist in the `admins` table and be linked via:
+
+```
+admins.auth_uid = supabase_user.id
+```
