@@ -59,3 +59,51 @@ MILKWIZE-backend/
 ```
 
 ---
+
+## Core Concepts
+
+### Authentication
+
+- Supabase handles **user authentication**
+- API expects a **JWT** in the `Authorization` header:
+
+```
+Authorization: Bearer <JWT>
+```
+
+- Server validates JWT using **Supabase service-role client**
+
+### Roles
+
+- **Admins**
+  - Create clients
+  - Create orders
+  - Record milking events
+  - Record and update payments
+- **Clients**
+  - View own profile
+  - View and confirm own orders
+
+Strict access control is enforced at the API level.
+
+---
+
+## API Endpoints
+
+### Health
+
+- `GET /health` — service health check
+
+### Clients
+
+- `POST /api/clients` — create client (admin only)
+- `GET /api/clients` — list / search clients (admin only)
+- `GET /api/clients/me` — client gets own profile + orders
+- `POST /api/clients/:id/link` — admin links auth user to client
+- `POST /api/clients/link-self` — client self-links via phone match
+
+### Orders
+
+- `POST /api/orders` — create order (admin)
+- `GET /api/orders` — list orders (admin)
+- `PATCH /api/orders/:id/confirm` — client confirms own order
