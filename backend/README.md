@@ -199,7 +199,7 @@ All backend logic is covered by Jest tests.
 
 Run tests:
 
-```
+```bash
 pnpm test
 ```
 
@@ -228,3 +228,27 @@ Recommended flows to verify manually:
    - Verify order appears for client
 
 ---
+
+## Deployment
+
+Deployed on **Render**
+
+- Node version: 22
+- Build command:
+
+```
+pnpm install --include=dev && pnpm run build
+```
+
+- Start command:
+
+```
+node dist/index.js
+```
+
+Live health check:
+
+```bash
+GET /health
+→ { "status": "ok" }
+```
