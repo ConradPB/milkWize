@@ -107,3 +107,19 @@ Strict access control is enforced at the API level.
 - `POST /api/orders` — create order (admin)
 - `GET /api/orders` — list orders (admin)
 - `PATCH /api/orders/:id/confirm` — client confirms own order
+
+### Milking
+
+- `POST /api/milking_events` — record milking event (admin)
+
+### Payments
+
+- `POST /api/payments` — record payment (admin)
+- `GET /api/payments` — list payments
+- `PUT /api/payments/:id` — update payment status (admin)
+
+### Webhook
+
+- `POST /api/webhook/payment` — HMAC-verified payment webhook
+
+---
