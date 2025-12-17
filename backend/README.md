@@ -160,3 +160,71 @@ Admins must exist in the `admins` table and be linked via:
 ```
 admins.auth_uid = supabase_user.id
 ```
+
+### Optional Helper Function
+
+If needed:
+
+```sql
+create or replace function get_admin_id_from_jwt()
+returns uuid
+language sql stable as $$
+  select id from admins
+  where auth_uid = auth.uid()::text
+  limit 1;
+$$;
+```
+
+---
+
+## Local Development
+
+```bash
+pnpm install
+pnpm run dev
+```
+
+Build & run production version:
+
+```bash
+pnpm run build
+pnpm start
+```
+
+---
+
+## Testing
+
+All backend logic is covered by Jest tests.
+
+Run tests:
+
+```bash
+pnpm test
+```
+
+Tests include:
+
+- Client creation
+- Order confirmation
+- Milking events
+- Webhook signature validation
+- Utility functions
+
+All tests currently pass.
+
+---
+
+## Manual API Testing (Postman / curl)
+
+Recommended flows to verify manually:
+
+1. Sign in user via Supabase → get JWT
+2. `GET /api/clients/me`  
+   → expect 200 with client + orders
+3. Admin:
+   - `POST /api/orders`
+   - Client confirms order
+   - Verify order appears for client
+
+---
