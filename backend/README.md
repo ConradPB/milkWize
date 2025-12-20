@@ -193,7 +193,7 @@ pnpm start
 
 ---
 
-## Testing
+## 
 
 All backend logic is covered by Jest tests.
 
