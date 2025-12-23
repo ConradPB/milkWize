@@ -247,8 +247,3 @@ node dist/index.js
 ```
 
 Live health check:
-
-```bash
-GET /health
-→ { "status": "ok" }
-```
