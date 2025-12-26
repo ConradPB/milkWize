@@ -250,5 +250,5 @@ Live health check:
 
 ```bash
 GET /health
-→ { "status": "ok" }
+→ { "status":
 ```
