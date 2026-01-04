@@ -164,5 +164,12 @@ describe("milking route", () => {
     } catch (e) {
       body = {};
     }
+
+    // If the route returned a data array, validate it
+    if (body && Array.isArray(body.data) && body.data.length > 0) {
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.data[0].id).toBeDefined();
+      expect(body.data[0].milk_liters).toBe(payload.milk_liters);
+    }
   });
 });
