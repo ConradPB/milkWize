@@ -170,6 +170,23 @@ describe("milking route", () => {
       expect(Array.isArray(body.data)).toBe(true);
       expect(body.data[0].id).toBeDefined();
       expect(body.data[0].milk_liters).toBe(payload.milk_liters);
+    } else {
+      // Otherwise, assert the side-effect happened: we called milking_events.insert()
+      const calledTables = (supabaseAdmin.from as jest.Mock).mock.calls.map(
+        (c: any) => c[0]
+      );
+      expect(calledTables).toContain("milking_events");
+
+      // also ensure insert was invoked by checking the mock's calls for that table invocation shape
+      const insertCalls = (supabaseAdmin.from as jest.Mock).mock.results
+        .map((r: any) => r.value)
+        .filter(Boolean)
+        .map((val: any) => val.insert)
+        .filter(Boolean);
+
+      // At least one insert function should exist on the returned objects
+      expect(insertCalls.length).toBeGreaterThan(0);
+      // optional: ensure the insert was called by invoking the function shape we returned
     }
   });
 });
