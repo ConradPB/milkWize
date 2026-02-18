@@ -1,4 +1,4 @@
-package com.milkwize.app
+package com.milkwize.android
 
 import org.junit.Test
 

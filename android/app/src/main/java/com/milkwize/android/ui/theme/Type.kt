@@ -1,4 +1,4 @@
-package com.milkwize.app.ui.theme
+package com.milkwize.android.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

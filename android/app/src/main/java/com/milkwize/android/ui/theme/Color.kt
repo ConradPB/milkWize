@@ -1,4 +1,4 @@
-package com.milkwize.app.ui.theme
+package com.milkwize.android.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

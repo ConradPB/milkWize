@@ -4,14 +4,16 @@ plugins {
 }
 
 android {
-    namespace = "com.milkwize.app"
+    namespace = "com.milkwize.android"
     compileSdk {
-        version = release(35)
+        version = release(36) {
+            minorApiLevel = 1
+        }
     }
 
     defaultConfig {
-        applicationId = "com.milkwize.app"
-        minSdk = 26
+        applicationId = "com.milkwize.android"
+        minSdk = 25
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -53,15 +55,4 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-
-    // Networking: Ktor (The 'Axios' of Android)
-    implementation("io.ktor:ktor-client-android:3.0.0")
-    implementation("io.ktor:ktor-client-content-negotiation:3.0.0")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.0")
-
-    // Supabase (For Auth and Database)
-    implementation(platform("io.github.jan-tennert.supabase:bom:3.0.0"))
-    implementation("io.github.jan-tennert.supabase:postgrest-kt")
-    implementation("io.github.jan-tennert.supabase:gotrue-kt")
-
 }
