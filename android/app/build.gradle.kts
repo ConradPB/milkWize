@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "com.milkwize.app"
     compileSdk {
-        version = release(36)
+        version = release(35)
     }
 
     defaultConfig {
