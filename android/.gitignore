@@ -1,3 +1,4 @@
+# Built artifacts
 *.iml
 .gradle
 /local.properties
@@ -13,3 +14,30 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Secrets
+/secrets.properties
+/app/secrets.properties
+google-services.json
+.env
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Gradle
+.gradle/
+build/
+
+# User-specific
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# System files
+.DS_Store
+Thumbs.db
