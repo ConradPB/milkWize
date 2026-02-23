@@ -1,13 +1,14 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.secrets.gradle.plugin)
-    kotlin("plugin.serialization") version "2.0.21"
 }
 
 android {
     namespace = "com.milkwize.android"
-    compileSdk = 36 // Updated to 36 as required by dependencies
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.milkwize.android"
@@ -29,11 +30,13 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlin {
+        jvmToolchain(17)
     }
     buildFeatures {
-        compose = true
         buildConfig = true
     }
 }
@@ -64,6 +67,7 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:postgrest-kt:3.0.0")
     implementation("io.github.jan-tennert.supabase:auth-kt:3.0.0")
 
-    // Serialization (The "Bridge" between JSON and Kotlin)
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // Serialization
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.0")
 }
