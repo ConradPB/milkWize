@@ -41,6 +41,12 @@ android {
     }
 }
 
+configurations.all {
+    resolutionStrategy {
+        force("androidx.browser:browser:1.8.0")
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -59,15 +65,16 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // Networking (Ktor)
-    implementation("io.ktor:ktor-client-android:3.0.0")
-    implementation("io.ktor:ktor-client-content-negotiation:3.0.0")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.0")
+    implementation("io.ktor:ktor-client-android:3.0.1")
+    implementation("io.ktor:ktor-client-content-negotiation:3.0.1")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.1")
 
-    // Supabase Core & Plugins
-    implementation("io.github.jan-tennert.supabase:postgrest-kt:3.0.0")
-    implementation("io.github.jan-tennert.supabase:auth-kt:3.0.0")
+    // Supabase Core & Plugins (Using 3.3.0)
+    implementation(platform("io.github.jan-tennert.supabase:bom:3.3.0"))
+    implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:auth-kt")
 
     // Serialization
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.1")
 }
