@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -65,7 +67,27 @@ fun MilkingDashboard() {
         val uniqueCows = events.map { it.cowId }.distinct().size
 
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("MilkWize Dashboard", style = MaterialTheme.typography.headlineLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("MilkWize Dashboard", style = MaterialTheme.typography.headlineLarge)
+
+                // LOGOUT BUTTON
+                IconButton(onClick = {
+                    scope.launch {
+                        SupabaseClient.client.auth.signOut()
+                        isLoggedIn = false
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                        contentDescription = "Logout",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
 
             // 1. SUMMARY STATS
             Row(
@@ -227,6 +249,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 isLoggingIn = true
                 scope.launch {
                     try {
+                        // This is the cleaner, modern way to call it
                         SupabaseClient.client.auth.signInWith(Email) {
                             this.email = email
                             this.password = password
