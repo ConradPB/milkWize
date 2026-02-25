@@ -43,6 +43,13 @@ fun MilkingDashboard() {
     if (!isLoggedIn) {
         LoginScreen(onLoginSuccess = { isLoggedIn = true })
     } else {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val db = remember { AppDatabase.getDatabase(context) }
+        val milkingDao = db.milkingDao()
+
+// This variable will now "watch" the local database in real-time
+        val localEvents by milkingDao.getAllLocally().collectAsState(initial = emptyList())
+        
         // DATA & UI STATES
         var events by remember { mutableStateOf(listOf<MilkingEvent>()) }
         var cowList by remember { mutableStateOf(listOf<Cow>()) }
