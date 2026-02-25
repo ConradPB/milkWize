@@ -47,7 +47,7 @@ fun MilkingDashboard() {
         val db = remember { AppDatabase.getDatabase(context) }
         val milkingDao = db.milkingDao()
 
-// This variable will now "watch" the local database in real-time
+        // This variable will now "watch" the local database in real-time
         val localEvents by milkingDao.getAllLocally().collectAsState(initial = emptyList())
         
         // DATA & UI STATES
@@ -165,20 +165,35 @@ fun MilkingDashboard() {
                                 isLoading = true
                                 scope.launch {
                                     try {
-                                        val newEvent = MilkingEvent(cowId = cowId, milkLiters = amount)
-                                        SupabaseClient.client.postgrest["milking_events"].insert(newEvent)
-                                        statusMessage = "Saved: ${selectedCow?.name} - $amount L"
+                                        // 1. SAVE LOCALLY FIRST (Instant)
+                                        val timestamp = java.time.OffsetDateTime.now().toString()
+                                        val localEvent = LocalEvent(
+                                            cowId = cowId,
+                                            milkLiters = amount,
+                                            timestamp = timestamp
+                                        )
+                                        milkingDao.insert(localEvent)
+
+                                        statusMessage = "Saved to Tablet ✅"
                                         newAmount = ""
-                                        // Refresh list
-                                        events = SupabaseClient.client.postgrest["milking_events"].select().decodeList<MilkingEvent>()
+
+                                        // 2. TRY TO SYNC TO SUPABASE (Background)
+                                        try {
+                                            val supabaseEvent = MilkingEvent(cowId = cowId, milkLiters = amount)
+                                            SupabaseClient.client.postgrest["milking_events"].insert(supabaseEvent)
+
+                                            // 3. UPDATE LOCAL FLAG IF CLOUD SAVE WORKED
+                                            milkingDao.update(localEvent.copy(isSynced = true))
+                                            statusMessage = "Synced to Cloud ☁️"
+                                        } catch (e: Exception) {
+                                            statusMessage = "Saved locally (Offline) 📶"
+                                        }
                                     } catch (e: Exception) {
-                                        statusMessage = "Save Error: ${e.localizedMessage}"
+                                        statusMessage = "Local Save Error: ${e.localizedMessage}"
                                     } finally {
                                         isLoading = false
                                     }
                                 }
-                            } else {
-                                statusMessage = "Please select a cow and enter liters."
                             }
                         },
                         modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
@@ -212,8 +227,8 @@ fun MilkingDashboard() {
             }
 
             LazyColumn {
-                items(events) { event ->
-                    MilkingEventCard(event)
+                items(localEvents) { event ->
+                    LocalMilkingEventCard(event)
                 }
             }
         }
