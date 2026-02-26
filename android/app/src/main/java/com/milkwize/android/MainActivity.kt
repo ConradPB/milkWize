@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -70,8 +72,9 @@ fun MilkingDashboard() {
             }
         }
 
-        val totalLiters = events.sumOf { it.milkLiters }
-        val uniqueCows = events.map { it.cowId }.distinct().size
+        // IMPROVED: Calculate stats from localEvents so it works offline!
+        val totalLiters = localEvents.sumOf { it.milkLiters }
+        val uniqueCows = localEvents.map { it.cowId }.distinct().size
 
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -217,13 +220,13 @@ fun MilkingDashboard() {
                 scope.launch {
                     try {
                         events = SupabaseClient.client.postgrest["milking_events"].select().decodeList<MilkingEvent>()
-                        statusMessage = "History refreshed."
+                        statusMessage = "History refreshed from Cloud."
                     } catch (e: Exception) {
                         statusMessage = "Fetch Error: ${e.localizedMessage}"
                     }
                 }
             }) {
-                Text("Refresh History")
+                Text("Refresh Cloud History")
             }
 
             LazyColumn {
@@ -271,7 +274,6 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 isLoggingIn = true
                 scope.launch {
                     try {
-                        // This is the cleaner, modern way to call it
                         SupabaseClient.client.auth.signInWith(Email) {
                             this.email = email
                             this.password = password
@@ -297,19 +299,21 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 }
 
 @Composable
-fun MilkingEventCard(event: MilkingEvent) {
+fun LocalMilkingEventCard(event: LocalEvent) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Cow: ...${event.cowId.takeLast(6)}",
                     style = MaterialTheme.typography.titleMedium
@@ -319,16 +323,23 @@ fun MilkingEventCard(event: MilkingEvent) {
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
-            }
-
-            event.createdAt?.let {
                 Text(
-                    text = "Logged: ${it.take(16).replace("T", " ")}",
+                    text = "Logged: ${event.timestamp.take(16).replace("T", " ")}",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
+
+            Icon(
+                imageVector = if (event.isSynced)
+                    Icons.Default.CloudDone
+                else
+                    Icons.Default.CloudOff,
+                contentDescription = if (event.isSynced) "Synced" else "Pending Sync",
+                tint = if (event.isSynced) Color(0xFF4CAF50) else Color(0xFFF44336),
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 }
