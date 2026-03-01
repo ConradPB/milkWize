@@ -90,6 +90,45 @@ fun MilkingDashboard() {
         val totalLiters = localEvents.sumOf { it.milkLiters }
         val uniqueCows = localEvents.map { it.cowId }.distinct().size
 
+        val unsyncedCount by milkingDao.getUnsyncedCount().collectAsState(initial = 0)
+
+        if (unsyncedCount > 0) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Sync Manager", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "$unsyncedCount records are only on this tablet.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                syncPendingRecords(milkingDao, SupabaseClient.client)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Sync Now")
+                    }
+                }
+            }
+        }
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
