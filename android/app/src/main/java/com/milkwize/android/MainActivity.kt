@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +37,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+suspend fun syncPendingRecords(milkingDao: MilkingDao, supabase: io.github.jan.supabase.SupabaseClient) {
+    val pending = milkingDao.getAllUnsynced()
+    pending.forEach { localEvent ->
+        try {
+            val supabaseEvent = MilkingEvent(
+                cowId = localEvent.cowId,
+                milkLiters = localEvent.milkLiters
+            )
+            supabase.postgrest["milking_events"].insert(supabaseEvent)
+            milkingDao.update(localEvent.copy(isSynced = true))
+        } catch (e: Exception) {
+            return@forEach
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MilkingDashboard() {
@@ -49,10 +66,9 @@ fun MilkingDashboard() {
         val db = remember { AppDatabase.getDatabase(context) }
         val milkingDao = db.milkingDao()
 
-        // This variable will now "watch" the local database in real-time
         val localEvents by milkingDao.getAllLocally().collectAsState(initial = emptyList())
+        val unsyncedCount by milkingDao.getUnsyncedCount().collectAsState(initial = 0)
         
-        // DATA & UI STATES
         var events by remember { mutableStateOf(listOf<MilkingEvent>()) }
         var cowList by remember { mutableStateOf(listOf<Cow>()) }
         var selectedCow by remember { mutableStateOf<Cow?>(null) }
@@ -61,7 +77,6 @@ fun MilkingDashboard() {
         var isLoading by remember { mutableStateOf(false) }
         var statusMessage by remember { mutableStateOf("Ready") }
 
-        // Fetch data after login
         LaunchedEffect(Unit) {
             try {
                 cowList = SupabaseClient.client.postgrest["cows"].select().decodeList<Cow>()
@@ -72,7 +87,6 @@ fun MilkingDashboard() {
             }
         }
 
-        // IMPROVED: Calculate stats from localEvents so it works offline!
         val totalLiters = localEvents.sumOf { it.milkLiters }
         val uniqueCows = localEvents.map { it.cowId }.distinct().size
 
@@ -82,24 +96,36 @@ fun MilkingDashboard() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("MilkWize Dashboard", style = MaterialTheme.typography.headlineLarge)
+                Text("MilkWize", style = MaterialTheme.typography.headlineLarge)
 
-                // LOGOUT BUTTON
-                IconButton(onClick = {
-                    scope.launch {
-                        SupabaseClient.client.auth.signOut()
-                        isLoggedIn = false
+                Row {
+                    if (unsyncedCount > 0) {
+                        IconButton(onClick = {
+                            scope.launch {
+                                statusMessage = "Syncing..."
+                                syncPendingRecords(milkingDao, SupabaseClient.client)
+                                statusMessage = "Sync complete."
+                            }
+                        }) {
+                            Icon(Icons.Default.Sync, contentDescription = "Sync Now", tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
-                }) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                        contentDescription = "Logout",
-                        tint = MaterialTheme.colorScheme.error
-                    )
+                    
+                    IconButton(onClick = {
+                        scope.launch {
+                            SupabaseClient.client.auth.signOut()
+                            isLoggedIn = false
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                            contentDescription = "Logout",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
 
-            // 1. SUMMARY STATS
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -118,7 +144,6 @@ fun MilkingDashboard() {
                 }
             }
 
-            // 2. LOGGING FORM
             Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Log Daily Yield", style = MaterialTheme.typography.titleMedium)
@@ -168,7 +193,6 @@ fun MilkingDashboard() {
                                 isLoading = true
                                 scope.launch {
                                     try {
-                                        // 1. SAVE LOCALLY FIRST (Instant)
                                         val timestamp = java.time.OffsetDateTime.now().toString()
                                         val localEvent = LocalEvent(
                                             cowId = cowId,
@@ -180,12 +204,9 @@ fun MilkingDashboard() {
                                         statusMessage = "Saved to Tablet ✅"
                                         newAmount = ""
 
-                                        // 2. TRY TO SYNC TO SUPABASE (Background)
                                         try {
                                             val supabaseEvent = MilkingEvent(cowId = cowId, milkLiters = amount)
                                             SupabaseClient.client.postgrest["milking_events"].insert(supabaseEvent)
-
-                                            // 3. UPDATE LOCAL FLAG IF CLOUD SAVE WORKED
                                             milkingDao.update(localEvent.copy(isSynced = true))
                                             statusMessage = "Synced to Cloud ☁️"
                                         } catch (e: Exception) {
@@ -219,7 +240,7 @@ fun MilkingDashboard() {
             TextButton(onClick = {
                 scope.launch {
                     try {
-                        events = SupabaseClient.client.postgrest["milking_events"].select().decodeList<MilkingEvent>()
+                        events = SupabaseClient.client.postgrest["milking_events"].select().decodeList<Cow>()
                         statusMessage = "History refreshed from Cloud."
                     } catch (e: Exception) {
                         statusMessage = "Fetch Error: ${e.localizedMessage}"
