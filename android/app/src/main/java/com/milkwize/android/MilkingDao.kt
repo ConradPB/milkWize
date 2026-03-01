@@ -15,4 +15,10 @@ interface MilkingDao {
 
     @Query("SELECT * FROM local_milking_events ORDER BY id DESC")
     fun getAllLocally(): kotlinx.coroutines.flow.Flow<List<LocalEvent>>
+
+    @Query("SELECT COUNT(*) FROM local_milking_events WHERE isSynced = 0")
+    fun getUnsyncedCount(): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("SELECT * FROM local_milking_events WHERE isSynced = 0")
+    suspend fun getAllUnsynced(): List<LocalEvent>
 }
