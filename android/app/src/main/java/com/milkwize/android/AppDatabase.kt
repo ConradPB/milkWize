@@ -7,7 +7,7 @@ import android.content.Context
 
 @Database(entities = [LocalEvent::class], version = 1)
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun milkingDao(): MilkingDao
+    abstract fun (): MilkingDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
