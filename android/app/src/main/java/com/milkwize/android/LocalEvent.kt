@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 data class LocalEvent(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val cowId: String,
+    val ownerId: String,
     val milkLiters: Double,
     val timestamp: String,
     val isSynced: Boolean = false // This is the magic flag!
