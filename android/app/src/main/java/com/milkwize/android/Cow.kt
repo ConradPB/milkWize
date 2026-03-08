@@ -7,6 +7,9 @@ import kotlinx.serialization.SerialName
 data class Cow(
     val id: String,
 
+    @SerialName("owner_id")
+    val ownerId: String? = null,
+
     @SerialName("tag") // Maps the Supabase "tag" column to this variable
     val name: String,
 
