@@ -43,6 +43,7 @@ suspend fun syncPendingRecords(milkingDao: MilkingDao, supabase: io.github.jan.s
         try {
             val supabaseEvent = MilkingEvent(
                 cowId = localEvent.cowId,
+                ownerId = localEvent.ownerId,
                 milkLiters = localEvent.milkLiters
             )
             supabase.postgrest["milking_events"].insert(supabaseEvent)
@@ -227,13 +228,15 @@ fun MilkingDashboard() {
                         onClick = {
                             val amount = newAmount.toDoubleOrNull()
                             val cowId = selectedCow?.id
-                            if (cowId != null && amount != null) {
+                            val ownerId = SupabaseClient.client.auth.currentUserOrNull()?.id
+                            if (cowId != null && amount != null && ownerId != null) {
                                 isLoading = true
                                 scope.launch {
                                     try {
                                         val timestamp = java.time.OffsetDateTime.now().toString()
                                         val localEvent = LocalEvent(
                                             cowId = cowId,
+                                            ownerId = ownerId,
                                             milkLiters = amount,
                                             timestamp = timestamp
                                         )
@@ -243,7 +246,7 @@ fun MilkingDashboard() {
                                         newAmount = ""
 
                                         try {
-                                            val supabaseEvent = MilkingEvent(cowId = cowId, milkLiters = amount)
+                                            val supabaseEvent = MilkingEvent(cowId = cowId, ownerId = ownerId, milkLiters = amount)
                                             SupabaseClient.client.postgrest["milking_events"].insert(supabaseEvent)
                                             milkingDao.update(localEvent.copy(isSynced = true))
                                             statusMessage = "Synced to Cloud ☁️"
@@ -301,7 +304,8 @@ fun MilkingDashboard() {
 fun LoginScreen(onLoginSuccess: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var isLoggingIn by remember { mutableStateOf(false) }
+    var isRegistering by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
@@ -310,7 +314,11 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Admin Access", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = if (isRegistering) "Register Your Farm" else "MilkWize Login",
+            style = MaterialTheme.typography.headlineMedium
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
@@ -330,25 +338,38 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 
         Button(
             onClick = {
-                isLoggingIn = true
+                isLoading = true
                 scope.launch {
                     try {
-                        SupabaseClient.client.auth.signInWith(Email) {
-                            this.email = email
-                            this.password = password
+                        if (isRegistering) {
+                            SupabaseClient.client.auth.signUpWith(Email) {
+                                this.email = email
+                                this.password = password
+                            }
+                            errorMessage = "Registration successful! Please login."
+                            isRegistering = false
+                        } else {
+                            SupabaseClient.client.auth.signInWith(Email) {
+                                this.email = email
+                                this.password = password
+                            }
+                            onLoginSuccess()
                         }
-                        onLoginSuccess()
                     } catch (e: Exception) {
-                        errorMessage = "Invalid credentials. Try again."
+                        errorMessage = e.localizedMessage ?: "An error occurred"
                     } finally {
-                        isLoggingIn = false
+                        isLoading = false
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            enabled = !isLoggingIn
+            enabled = !isLoading
         ) {
-            Text(if (isLoggingIn) "Verifying..." else "Login")
+            Text(if (isLoading) "Processing..." else if (isRegistering) "Create Account" else "Login")
+        }
+
+        TextButton(onClick = { isRegistering = !isRegistering }) {
+            Text(if (isRegistering) "Already have an account? Login" else "New Farmer? Create an Account")
         }
 
         if (errorMessage.isNotEmpty()) {
