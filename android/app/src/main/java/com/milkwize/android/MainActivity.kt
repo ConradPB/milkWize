@@ -44,6 +44,7 @@ suspend fun syncPendingRecords(milkingDao: MilkingDao, supabase: io.github.jan.s
             val supabaseEvent = MilkingEvent(
                 cowId = localEvent.cowId,
                 ownerId = localEvent.ownerId,
+                recordedBy = localEvent.recordedBy,
                 milkLiters = localEvent.milkLiters
             )
             supabase.postgrest["milking_events"].insert(supabaseEvent)
@@ -83,7 +84,7 @@ fun MilkingDashboard() {
                 cowList = SupabaseClient.client.postgrest["cows"].select().decodeList<Cow>()
                 events = SupabaseClient.client.postgrest["milking_events"].select().decodeList<MilkingEvent>()
                 statusMessage = "Data loaded."
-            } catch (e: Exception) {
+            } catch (e) {
                 statusMessage = "Load Error: ${e.localizedMessage}"
             }
         }
@@ -115,7 +116,6 @@ fun MilkingDashboard() {
                     IconButton(onClick = {
                         scope.launch {
                             SupabaseClient.client.auth.signOut()
-                            // Clear local cache securely
                             db.clearAllTables()
                             isLoggedIn = false
                         }
@@ -230,7 +230,9 @@ fun MilkingDashboard() {
                         onClick = {
                             val amount = newAmount.toDoubleOrNull()
                             val cowId = selectedCow?.id
-                            val ownerId = SupabaseClient.client.auth.currentUserOrNull()?.id
+                            val user = SupabaseClient.client.auth.currentUserOrNull()
+                            val ownerId = user?.id
+                            val recordedBy = user?.email
                             if (cowId != null && amount != null && ownerId != null) {
                                 isLoading = true
                                 scope.launch {
@@ -239,6 +241,7 @@ fun MilkingDashboard() {
                                         val localEvent = LocalEvent(
                                             cowId = cowId,
                                             ownerId = ownerId,
+                                            recordedBy = recordedBy,
                                             milkLiters = amount,
                                             timestamp = timestamp
                                         )
@@ -248,7 +251,12 @@ fun MilkingDashboard() {
                                         newAmount = ""
 
                                         try {
-                                            val supabaseEvent = MilkingEvent(cowId = cowId, ownerId = ownerId, milkLiters = amount)
+                                            val supabaseEvent = MilkingEvent(
+                                                cowId = cowId,
+                                                ownerId = ownerId,
+                                                recordedBy = recordedBy,
+                                                milkLiters = amount
+                                            )
                                             SupabaseClient.client.postgrest["milking_events"].insert(supabaseEvent)
                                             milkingDao.update(localEvent.copy(isSynced = true))
                                             statusMessage = "Synced to Cloud ☁️"
@@ -411,6 +419,13 @@ fun LocalMilkingEventCard(event: LocalEvent) {
                     color = Color.Gray,
                     modifier = Modifier.padding(top = 4.dp)
                 )
+                event.recordedBy?.let {
+                    Text(
+                        text = "By: $it",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray
+                    )
+                }
             }
 
             Icon(
