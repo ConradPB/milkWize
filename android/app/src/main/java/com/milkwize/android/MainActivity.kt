@@ -115,6 +115,8 @@ fun MilkingDashboard() {
                     IconButton(onClick = {
                         scope.launch {
                             SupabaseClient.client.auth.signOut()
+                            // Clear local cache securely
+                            db.clearAllTables()
                             isLoggedIn = false
                         }
                     }) {
