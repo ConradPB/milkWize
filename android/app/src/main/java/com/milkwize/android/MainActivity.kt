@@ -8,10 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,7 +43,7 @@ suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase:
             val supabaseEvent = MilkingEvent(
                 cowId = localEvent.cowId,
                 ownerId = localEvent.ownerId,
-                recordedBy = localEvent.ownerId, // FIX: Use UUID instead of email string
+                recordedBy = localEvent.ownerId, // Using UUID for database integrity
                 milkLiters = localEvent.milkLiters
             )
             supabase.postgrest["milking_events"].insert(supabaseEvent)
@@ -138,7 +135,7 @@ fun MilkingDashboard() {
                                     db.clearAllTables()
                                     isLoggedIn = false
                                 } catch (e: Exception) {
-                                    // Handle logout error
+                                    statusMessage = "Logout Error: ${e.localizedMessage}"
                                 }
                             }
                         }) {
@@ -260,7 +257,7 @@ fun MilkingDashboard() {
                                             val localEvent = LocalEvent(
                                                 cowId = cowId,
                                                 ownerId = currentUserId,
-                                                recordedBy = currentUserId, // FIX: Use UUID
+                                                recordedBy = currentUserId,
                                                 milkLiters = amount,
                                                 timestamp = timestamp
                                             )
@@ -273,7 +270,7 @@ fun MilkingDashboard() {
                                                 val supabaseEvent = MilkingEvent(
                                                     cowId = cowId,
                                                     ownerId = currentUserId,
-                                                    recordedBy = currentUserId, // FIX: Use UUID
+                                                    recordedBy = currentUserId,
                                                     milkLiters = amount
                                                 )
                                                 SupabaseClient.client.postgrest["milking_events"].insert(supabaseEvent)
@@ -322,7 +319,7 @@ fun MilkingDashboard() {
 
                 LazyColumn {
                     items(localEvents) { event ->
-                        LocalMilkingEventCard(event)
+                        LocalMilkingEventCard(event, milkingDao, scope)
                     }
                 }
             }
@@ -491,7 +488,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 }
 
 @Composable
-fun LocalMilkingEventCard(event: LocalEvent) {
+fun LocalMilkingEventCard(event: LocalEvent, milkingDao: MilkingDao, scope: kotlinx.coroutines.CoroutineScope) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -523,15 +520,34 @@ fun LocalMilkingEventCard(event: LocalEvent) {
                 )
             }
 
-            Icon(
-                imageVector = if (event.isSynced)
-                    Icons.Default.CloudDone
-                else
-                    Icons.Default.CloudOff,
-                contentDescription = if (event.isSynced) "Synced" else "Pending Sync",
-                tint = if (event.isSynced) Color(0xFF4CAF50) else Color(0xFFF44336),
-                modifier = Modifier.size(28.dp)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = {
+                    scope.launch {
+                        try {
+                            if (event.isSynced) {
+                                SupabaseClient.client.postgrest["milking_events"].delete {
+                                    filter { eq("id", event.id) }
+                                }
+                            }
+                            milkingDao.delete(event)
+                        } catch (e: Exception) {
+                            // ignore
+                        }
+                    }
+                }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                }
+
+                Icon(
+                    imageVector = if (event.isSynced)
+                        Icons.Default.CloudDone
+                    else
+                        Icons.Default.CloudOff,
+                    contentDescription = if (event.isSynced) "Synced" else "Pending Sync",
+                    tint = if (event.isSynced) Color(0xFF4CAF50) else Color(0xFFF44336),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
     }
 }
