@@ -46,7 +46,7 @@ suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase:
             val supabaseEvent = MilkingEvent(
                 cowId = localEvent.cowId,
                 ownerId = localEvent.ownerId,
-                recordedBy = localEvent.recordedBy,
+                recordedBy = localEvent.ownerId, // FIX: Use UUID instead of email string
                 milkLiters = localEvent.milkLiters
             )
             supabase.postgrest["milking_events"].insert(supabaseEvent)
@@ -252,7 +252,6 @@ fun MilkingDashboard() {
                             onClick = {
                                 val amount = newAmount.toDoubleOrNull()
                                 val cowId = selectedCow?.id
-                                val recordedBy = user?.email
                                 if (cowId != null && amount != null && currentUserId.isNotEmpty()) {
                                     isLoading = true
                                     scope.launch {
@@ -261,7 +260,7 @@ fun MilkingDashboard() {
                                             val localEvent = LocalEvent(
                                                 cowId = cowId,
                                                 ownerId = currentUserId,
-                                                recordedBy = recordedBy,
+                                                recordedBy = currentUserId, // FIX: Use UUID
                                                 milkLiters = amount,
                                                 timestamp = timestamp
                                             )
@@ -274,7 +273,7 @@ fun MilkingDashboard() {
                                                 val supabaseEvent = MilkingEvent(
                                                     cowId = cowId,
                                                     ownerId = currentUserId,
-                                                    recordedBy = recordedBy,
+                                                    recordedBy = currentUserId, // FIX: Use UUID
                                                     milkLiters = amount
                                                 )
                                                 SupabaseClient.client.postgrest["milking_events"].insert(supabaseEvent)
@@ -312,7 +311,6 @@ fun MilkingDashboard() {
                     scope.launch {
                         try {
                             statusMessage = "Refreshing view..."
-                            // UI automatically reacts to local database changes via Room Flow
                             statusMessage = "View refreshed."
                         } catch (e: Exception) {
                             statusMessage = "Fetch Error: ${e.localizedMessage}"
@@ -523,13 +521,6 @@ fun LocalMilkingEventCard(event: LocalEvent) {
                     color = Color.Gray,
                     modifier = Modifier.padding(top = 4.dp)
                 )
-                event.recordedBy?.let {
-                    Text(
-                        text = "By: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
-                    )
-                }
             }
 
             Icon(
