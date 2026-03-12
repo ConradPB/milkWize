@@ -70,7 +70,8 @@ fun MilkingDashboard() {
         val db = remember { AppDatabase.getDatabase(context) }
         val milkingDao = db.milkingDao()
 
-        val currentUserId = SupabaseClient.client.auth.currentUserOrNull()?.id ?: ""
+        val user = SupabaseClient.client.auth.currentUserOrNull()
+        val currentUserId = user?.id ?: ""
 
         val localEvents by milkingDao.getAllLocally(currentUserId).collectAsState(initial = emptyList())
         val unsyncedCount by milkingDao.getUnsyncedCount(currentUserId).collectAsState(initial = 0)
@@ -90,12 +91,19 @@ fun MilkingDashboard() {
                 }
             }
         ) { paddingValues ->
-            LaunchedEffect(Unit) {
-                try {
-                    cowList = SupabaseClient.client.postgrest["cows"].select().decodeList<Cow>()
-                    statusMessage = "Data loaded."
-                } catch (e: Exception) {
-                    statusMessage = "Load Error: ${e.localizedMessage}"
+            LaunchedEffect(currentUserId) {
+                if (currentUserId.isNotEmpty()) {
+                    try {
+                        cowList = SupabaseClient.client.postgrest["cows"]
+                            .select {
+                                filter {
+                                    eq("owner_id", currentUserId)
+                                }
+                            }.decodeList<Cow>()
+                        statusMessage = "Cows loaded."
+                    } catch (e: Exception) {
+                        statusMessage = "Load Error: ${e.localizedMessage}"
+                    }
                 }
             }
 
@@ -244,17 +252,15 @@ fun MilkingDashboard() {
                             onClick = {
                                 val amount = newAmount.toDoubleOrNull()
                                 val cowId = selectedCow?.id
-                                val user = SupabaseClient.client.auth.currentUserOrNull()
-                                val ownerId = user?.id
                                 val recordedBy = user?.email
-                                if (cowId != null && amount != null && ownerId != null) {
+                                if (cowId != null && amount != null && currentUserId.isNotEmpty()) {
                                     isLoading = true
                                     scope.launch {
                                         try {
                                             val timestamp = java.time.OffsetDateTime.now().toString()
                                             val localEvent = LocalEvent(
                                                 cowId = cowId,
-                                                ownerId = ownerId,
+                                                ownerId = currentUserId,
                                                 recordedBy = recordedBy,
                                                 milkLiters = amount,
                                                 timestamp = timestamp
@@ -267,7 +273,7 @@ fun MilkingDashboard() {
                                             try {
                                                 val supabaseEvent = MilkingEvent(
                                                     cowId = cowId,
-                                                    ownerId = ownerId,
+                                                    ownerId = currentUserId,
                                                     recordedBy = recordedBy,
                                                     milkLiters = amount
                                                 )
@@ -331,7 +337,12 @@ fun MilkingDashboard() {
                     showAddCowDialog = false
                     scope.launch {
                         try {
-                            cowList = SupabaseClient.client.postgrest["cows"].select().decodeList<Cow>()
+                            cowList = SupabaseClient.client.postgrest["cows"]
+                                .select {
+                                    filter {
+                                        eq("owner_id", currentUserId)
+                                    }
+                                }.decodeList<Cow>()
                         } catch (e: Exception) {
                             // ignore
                         }
