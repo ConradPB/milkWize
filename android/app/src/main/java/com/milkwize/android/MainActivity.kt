@@ -39,8 +39,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-suspend fun syncPendingRecords(milkingDao: MilkingDao, supabase: io.github.jan.supabase.SupabaseClient) {
-    val pending = milkingDao.getAllUnsynced()
+suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase: io.github.jan.supabase.SupabaseClient) {
+    val pending = milkingDao.getAllUnsynced(userId)
     pending.forEach { localEvent ->
         try {
             val supabaseEvent = MilkingEvent(
@@ -70,8 +70,10 @@ fun MilkingDashboard() {
         val db = remember { AppDatabase.getDatabase(context) }
         val milkingDao = db.milkingDao()
 
-        val localEvents by milkingDao.getAllLocally().collectAsState(initial = emptyList())
-        val unsyncedCount by milkingDao.getUnsyncedCount().collectAsState(initial = 0)
+        val currentUserId = SupabaseClient.client.auth.currentUserOrNull()?.id ?: ""
+
+        val localEvents by milkingDao.getAllLocally(currentUserId).collectAsState(initial = emptyList())
+        val unsyncedCount by milkingDao.getUnsyncedCount(currentUserId).collectAsState(initial = 0)
         
         var cowList by remember { mutableStateOf(listOf<Cow>()) }
         var selectedCow by remember { mutableStateOf<Cow?>(null) }
@@ -113,7 +115,7 @@ fun MilkingDashboard() {
                             IconButton(onClick = {
                                 scope.launch {
                                     statusMessage = "Syncing..."
-                                    syncPendingRecords(milkingDao, SupabaseClient.client)
+                                    syncPendingRecords(currentUserId, milkingDao, SupabaseClient.client)
                                     statusMessage = "Sync complete."
                                 }
                             }) {
@@ -123,9 +125,13 @@ fun MilkingDashboard() {
                         
                         IconButton(onClick = {
                             scope.launch {
-                                SupabaseClient.client.auth.signOut()
-                                db.clearAllTables()
-                                isLoggedIn = false
+                                try {
+                                    SupabaseClient.client.auth.signOut()
+                                    db.clearAllTables()
+                                    isLoggedIn = false
+                                } catch (e: Exception) {
+                                    // Handle logout error
+                                }
                             }
                         }) {
                             Icon(
@@ -160,7 +166,7 @@ fun MilkingDashboard() {
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        syncPendingRecords(milkingDao, SupabaseClient.client)
+                                        syncPendingRecords(currentUserId, milkingDao, SupabaseClient.client)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -300,7 +306,7 @@ fun MilkingDashboard() {
                     scope.launch {
                         try {
                             statusMessage = "Refreshing view..."
-                            // Reactive localEvents handle the UI update automatically
+                            // UI automatically reacts to local database changes via Room Flow
                             statusMessage = "View refreshed."
                         } catch (e: Exception) {
                             statusMessage = "Fetch Error: ${e.localizedMessage}"
