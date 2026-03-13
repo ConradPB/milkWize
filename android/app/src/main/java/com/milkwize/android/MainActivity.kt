@@ -3,9 +3,14 @@ package com.milkwize.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
@@ -14,13 +19,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.milkwize.android.ui.theme.AndroidTheme
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.postgrest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.OffsetDateTime
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
@@ -36,20 +48,25 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase: io.github.jan.supabase.SupabaseClient) {
-    val pending = milkingDao.getAllUnsynced(userId)
-    pending.forEach { localEvent ->
+suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase: io.github.jan.supabase.SupabaseClient): Boolean {
+    return withContext(Dispatchers.IO) {
         try {
-            val supabaseEvent = MilkingEvent(
-                cowId = localEvent.cowId,
-                ownerId = localEvent.ownerId,
-                recordedBy = localEvent.ownerId, // Using UUID for database integrity
-                milkLiters = localEvent.milkLiters
-            )
-            supabase.postgrest["milking_events"].insert(supabaseEvent)
-            milkingDao.update(localEvent.copy(isSynced = true))
+            val pending = milkingDao.getAllUnsynced(userId)
+            if (pending.isEmpty()) return@withContext true
+            
+            pending.forEach { localEvent ->
+                val supabaseEvent = MilkingEvent(
+                    cowId = localEvent.cowId,
+                    ownerId = localEvent.ownerId,
+                    recordedBy = localEvent.ownerId,
+                    milkLiters = localEvent.milkLiters
+                )
+                supabase.postgrest["milking_events"].insert(supabaseEvent)
+                milkingDao.update(localEvent.copy(isSynced = true))
+            }
+            true
         } catch (e: Exception) {
-            return@forEach
+            false
         }
     }
 }
@@ -63,7 +80,7 @@ fun MilkingDashboard() {
     if (!isLoggedIn) {
         LoginScreen(onLoginSuccess = { isLoggedIn = true })
     } else {
-        val context = androidx.compose.ui.platform.LocalContext.current
+        val context = LocalContext.current
         val db = remember { AppDatabase.getDatabase(context) }
         val milkingDao = db.milkingDao()
 
@@ -80,24 +97,85 @@ fun MilkingDashboard() {
         var isLoading by remember { mutableStateOf(false) }
         var statusMessage by remember { mutableStateOf("Ready") }
         var showAddCowDialog by remember { mutableStateOf(false) }
+        
+        var isSyncing by remember { mutableStateOf(false) }
+        var showSyncSuccess by remember { mutableStateOf(false) }
 
         Scaffold(
             floatingActionButton = {
-                FloatingActionButton(onClick = { showAddCowDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Cow")
+                FloatingActionButton(onClick = { showAddCowDialog = true }, containerColor = MaterialTheme.colorScheme.primary) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Cow", tint = Color.White)
+                }
+            },
+            topBar = {
+                Surface(shadowElevation = 4.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("MilkWize", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                            Text(user?.email ?: "", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Sync Logic UI
+                            if (showSyncSuccess) {
+                                Icon(Icons.Default.CheckCircle, "Synced", tint = Color(0xFF4CAF50), modifier = Modifier.size(32.dp))
+                            } else if (unsyncedCount > 0) {
+                                if (isSyncing) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                } else {
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            isSyncing = true
+                                            val success = syncPendingRecords(currentUserId, milkingDao, SupabaseClient.client)
+                                            isSyncing = false
+                                            if (success) {
+                                                showSyncSuccess = true
+                                                delay(2000)
+                                                showSyncSuccess = false
+                                            } else {
+                                                statusMessage = "Sync failed - no connection"
+                                            }
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.Sync, contentDescription = "Sync Now", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+                            
+                            Spacer(Modifier.width(8.dp))
+                            
+                            IconButton(onClick = {
+                                scope.launch {
+                                    try {
+                                        withContext(Dispatchers.IO) {
+                                            SupabaseClient.client.auth.signOut()
+                                            db.clearAllTables() // Fixed thread issue
+                                        }
+                                        isLoggedIn = false
+                                    } catch (e: Exception) {
+                                        statusMessage = "Logout Error: ${e.localizedMessage}"
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
                 }
             }
         ) { paddingValues ->
             LaunchedEffect(currentUserId) {
                 if (currentUserId.isNotEmpty()) {
                     try {
-                        cowList = SupabaseClient.client.postgrest["cows"]
-                            .select {
-                                filter {
-                                    eq("owner_id", currentUserId)
-                                }
-                            }.decodeList<Cow>()
-                        statusMessage = "Cows loaded."
+                        withContext(Dispatchers.IO) {
+                            cowList = SupabaseClient.client.postgrest["cows"]
+                                .select { filter { eq("owner_id", currentUserId) } }
+                                .decodeList<Cow>()
+                        }
                     } catch (e: Exception) {
                         statusMessage = "Load Error: ${e.localizedMessage}"
                     }
@@ -108,110 +186,34 @@ fun MilkingDashboard() {
             val uniqueCows = localEvents.map { it.cowId }.distinct().size
 
             Column(modifier = Modifier.padding(paddingValues).padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("MilkWize", style = MaterialTheme.typography.headlineLarge)
-
-                    Row {
-                        if (unsyncedCount > 0) {
-                            IconButton(onClick = {
-                                scope.launch {
-                                    statusMessage = "Syncing..."
-                                    syncPendingRecords(currentUserId, milkingDao, SupabaseClient.client)
-                                    statusMessage = "Sync complete."
-                                }
-                            }) {
-                                Icon(Icons.Default.Sync, contentDescription = "Sync Now", tint = MaterialTheme.colorScheme.primary)
-                            }
+                
+                // Analytics Section
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Total Yield", style = MaterialTheme.typography.labelMedium)
+                            Text("${"%.1f".format(totalLiters)} L", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
                         }
-                        
-                        IconButton(onClick = {
-                            scope.launch {
-                                try {
-                                    SupabaseClient.client.auth.signOut()
-                                    db.clearAllTables()
-                                    isLoggedIn = false
-                                } catch (e: Exception) {
-                                    statusMessage = "Logout Error: ${e.localizedMessage}"
-                                }
-                            }
-                        }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                                contentDescription = "Logout",
-                                tint = MaterialTheme.colorScheme.error
-                            )
+                    }
+                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Active Cows", style = MaterialTheme.typography.labelMedium)
+                            Text("$uniqueCows", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
                         }
                     }
                 }
 
-                if (unsyncedCount > 0) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Sync Manager", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "$unsyncedCount records are only on this tablet.",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
+                Spacer(Modifier.height(16.dp))
 
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        syncPendingRecords(currentUserId, milkingDao, SupabaseClient.client)
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.error
-                                )
-                            ) {
-                                Icon(Icons.Default.Sync, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Sync Now")
-                            }
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Card(modifier = Modifier.weight(1f)) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Total Liters", style = MaterialTheme.typography.labelMedium)
-                            Text("${"%.1f".format(totalLiters)} L", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    Card(modifier = Modifier.weight(1f)) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Unique Cows", style = MaterialTheme.typography.labelMedium)
-                            Text("$uniqueCows", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.secondary)
-                        }
-                    }
-                }
-
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                // Log Section
+                Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Log Daily Yield", style = MaterialTheme.typography.titleMedium)
-
+                        Text("Log Production", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                        
                         ExposedDropdownMenuBox(
                             expanded = isExpanded,
                             onExpandedChange = { isExpanded = !isExpanded },
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                         ) {
                             OutlinedTextField(
                                 value = selectedCow?.name ?: "Select Cow",
@@ -222,17 +224,11 @@ fun MilkingDashboard() {
                                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
                             )
 
-                            ExposedDropdownMenu(
-                                expanded = isExpanded,
-                                onDismissRequest = { isExpanded = false }
-                            ) {
+                            ExposedDropdownMenu(expanded = isExpanded, onDismissRequest = { isExpanded = false }) {
                                 cowList.forEach { cow ->
                                     DropdownMenuItem(
                                         text = { Text(cow.name) },
-                                        onClick = {
-                                            selectedCow = cow
-                                            isExpanded = false
-                                        }
+                                        onClick = { selectedCow = cow; isExpanded = false }
                                     )
                                 }
                             }
@@ -242,7 +238,8 @@ fun MilkingDashboard() {
                             value = newAmount,
                             onValueChange = { newAmount = it },
                             label = { Text("Liters") },
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                            prefix = { Text("🥛 ") }
                         )
 
                         Button(
@@ -253,71 +250,50 @@ fun MilkingDashboard() {
                                     isLoading = true
                                     scope.launch {
                                         try {
-                                            val timestamp = java.time.OffsetDateTime.now().toString()
+                                            val timestamp = OffsetDateTime.now().toString()
                                             val localEvent = LocalEvent(
-                                                cowId = cowId,
-                                                ownerId = currentUserId,
-                                                recordedBy = currentUserId,
-                                                milkLiters = amount,
-                                                timestamp = timestamp
+                                                cowId = cowId, ownerId = currentUserId, recordedBy = currentUserId,
+                                                milkLiters = amount, timestamp = timestamp
                                             )
-                                            milkingDao.insert(localEvent)
-
-                                            statusMessage = "Saved to Tablet ✅"
+                                            withContext(Dispatchers.IO) { milkingDao.insert(localEvent) }
+                                            statusMessage = "Saved Locally ✅"
                                             newAmount = ""
 
                                             try {
-                                                val supabaseEvent = MilkingEvent(
-                                                    cowId = cowId,
-                                                    ownerId = currentUserId,
-                                                    recordedBy = currentUserId,
-                                                    milkLiters = amount
-                                                )
-                                                SupabaseClient.client.postgrest["milking_events"].insert(supabaseEvent)
-                                                milkingDao.update(localEvent.copy(isSynced = true))
-                                                statusMessage = "Synced to Cloud ☁️"
+                                                val supabaseEvent = MilkingEvent(cowId = cowId, ownerId = currentUserId, recordedBy = currentUserId, milkLiters = amount)
+                                                withContext(Dispatchers.IO) {
+                                                    SupabaseClient.client.postgrest["milking_events"].insert(supabaseEvent)
+                                                    milkingDao.update(localEvent.copy(isSynced = true))
+                                                }
+                                                statusMessage = "Synced Successfully ☁️"
                                             } catch (e: Exception) {
-                                                statusMessage = "Saved locally (Offline) 📶"
+                                                statusMessage = "Stored (Offline Mode) 📶"
                                             }
                                         } catch (e: Exception) {
-                                            statusMessage = "Local Save Error: ${e.localizedMessage}"
+                                            statusMessage = "Save Error: ${e.localizedMessage}"
                                         } finally {
                                             isLoading = false
                                         }
                                     }
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                            enabled = !isLoading
+                            modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 16.dp),
+                            enabled = !isLoading && selectedCow != null && newAmount.isNotEmpty(),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text(if (isLoading) "Saving..." else "Submit Record")
+                            if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                            else Text("Submit Entry", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
 
-                Text(
-                    text = statusMessage,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (statusMessage.contains("Error")) Color.Red else Color.Unspecified,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
+                Text(statusMessage, style = MaterialTheme.typography.bodySmall, color = if (statusMessage.contains("Error")) Color.Red else Color.Gray, modifier = Modifier.padding(top = 8.dp).align(Alignment.CenterHorizontally))
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
-                TextButton(onClick = {
-                    scope.launch {
-                        try {
-                            statusMessage = "Refreshing view..."
-                            statusMessage = "View refreshed."
-                        } catch (e: Exception) {
-                            statusMessage = "Fetch Error: ${e.localizedMessage}"
-                        }
-                    }
-                }) {
-                    Text("Refresh Local View")
-                }
-
-                LazyColumn {
+                Text("Recent Activity", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(localEvents) { event ->
                         LocalMilkingEventCard(event, milkingDao, scope)
                     }
@@ -332,15 +308,12 @@ fun MilkingDashboard() {
                     showAddCowDialog = false
                     scope.launch {
                         try {
-                            cowList = SupabaseClient.client.postgrest["cows"]
-                                .select {
-                                    filter {
-                                        eq("owner_id", currentUserId)
-                                    }
-                                }.decodeList<Cow>()
-                        } catch (e: Exception) {
-                            // ignore
-                        }
+                            withContext(Dispatchers.IO) {
+                                cowList = SupabaseClient.client.postgrest["cows"]
+                                    .select { filter { eq("owner_id", currentUserId) } }
+                                    .decodeList<Cow>()
+                            }
+                        } catch (e: Exception) { }
                     }
                 }
             )
@@ -357,55 +330,29 @@ fun AddCowDialog(onDismiss: () -> Unit, onCowAdded: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add New Cow") },
+        title = { Text("Register New Cow", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                OutlinedTextField(
-                    value = tag,
-                    onValueChange = { tag = it },
-                    label = { Text("Tag Number/Name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = breed,
-                    onValueChange = { breed = it },
-                    label = { Text("Breed (Optional)") },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                )
+                OutlinedTextField(value = tag, onValueChange = { tag = it }, label = { Text("Tag ID / Name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = breed, onValueChange = { breed = it }, label = { Text("Breed (Optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    val ownerId = SupabaseClient.client.auth.currentUserOrNull()?.id
-                    if (tag.isNotEmpty() && ownerId != null) {
-                        isLoading = true
-                        scope.launch {
-                            try {
-                                val newCow = Cow(
-                                    id = UUID.randomUUID().toString(),
-                                    ownerId = ownerId,
-                                    name = tag,
-                                    breed = breed
-                                )
-                                SupabaseClient.client.postgrest["cows"].insert(newCow)
-                                onCowAdded()
-                            } catch (e: Exception) {
-                                // handle error
-                            } finally {
-                                isLoading = false
-                            }
-                        }
+            Button(onClick = {
+                val ownerId = SupabaseClient.client.auth.currentUserOrNull()?.id
+                if (tag.isNotEmpty() && ownerId != null) {
+                    isLoading = true
+                    scope.launch {
+                        try {
+                            val newCow = Cow(id = UUID.randomUUID().toString(), ownerId = ownerId, name = tag, breed = breed)
+                            withContext(Dispatchers.IO) { SupabaseClient.client.postgrest["cows"].insert(newCow) }
+                            onCowAdded()
+                        } catch (e: Exception) { } finally { isLoading = false }
                     }
-                },
-                enabled = !isLoading
-            ) {
-                Text("Add")
-            }
+                }
+            }, enabled = !isLoading) { Text("Register") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
@@ -418,134 +365,73 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = if (isRegistering) "Register Your Farm" else "MilkWize Login",
-            style = MaterialTheme.typography.headlineMedium
-        )
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary).padding(24.dp)) {
+        Card(modifier = Modifier.align(Alignment.Center).fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = if (isRegistering) "Farm Registration" else "MilkWize Farmer Portal", 
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                
+                Spacer(Modifier.height(24.dp))
+                OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") }, 
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Email") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-        )
-
-        Button(
-            onClick = {
-                isLoading = true
-                scope.launch {
-                    try {
-                        if (isRegistering) {
-                            SupabaseClient.client.auth.signUpWith(Email) {
-                                this.email = email
-                                this.password = password
+                Button(onClick = {
+                    isLoading = true
+                    scope.launch {
+                        try {
+                            if (isRegistering) {
+                                SupabaseClient.client.auth.signUpWith(Email) { this.email = email; this.password = password }
+                                errorMessage = "Success! Please login."
+                                isRegistering = false
+                            } else {
+                                SupabaseClient.client.auth.signInWith(Email) { this.email = email; this.password = password }
+                                onLoginSuccess()
                             }
-                            errorMessage = "Registration successful! Please login."
-                            isRegistering = false
-                        } else {
-                            SupabaseClient.client.auth.signInWith(Email) {
-                                this.email = email
-                                this.password = password
-                            }
-                            onLoginSuccess()
-                        }
-                    } catch (e: Exception) {
-                        errorMessage = e.localizedMessage ?: "An error occurred"
-                    } finally {
-                        isLoading = false
+                        } catch (e: Exception) {
+                            errorMessage = e.localizedMessage ?: "Error connecting"
+                        } finally { isLoading = false }
                     }
+                }, modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 24.dp), enabled = !isLoading) {
+                    if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                    else Text(if (isRegistering) "Create Account" else "Sign In", fontWeight = FontWeight.Bold)
                 }
-            },
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            enabled = !isLoading
-        ) {
-            Text(if (isLoading) "Processing..." else if (isRegistering) "Create Account" else "Login")
-        }
 
-        TextButton(onClick = { isRegistering = !isRegistering }) {
-            Text(if (isRegistering) "Already have an account? Login" else "New Farmer? Create an Account")
-        }
-
-        if (errorMessage.isNotEmpty()) {
-            Text(errorMessage, color = Color.Red, modifier = Modifier.padding(top = 8.dp))
+                TextButton(onClick = { isRegistering = !isRegistering }) {
+                    Text(if (isRegistering) "Already have an account? Login" else "New Farmer? Register Now")
+                }
+                if (errorMessage.isNotEmpty()) Text(errorMessage, color = Color.Red, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
 
 @Composable
 fun LocalMilkingEventCard(event: LocalEvent, milkingDao: MilkingDao, scope: kotlinx.coroutines.CoroutineScope) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Cow: ...${event.cowId.takeLast(6)}",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = "${event.milkLiters} L",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Logged: ${event.timestamp.take(16).replace("T", " ")}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                Text("Cow: ...${event.cowId.takeLast(6)}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("${event.milkLiters} Liters", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold)
+                Text("Logged: ${event.timestamp.take(16).replace("T", " ")}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
             }
-
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = {
                     scope.launch {
-                        try {
+                        withContext(Dispatchers.IO) {
                             if (event.isSynced) {
-                                SupabaseClient.client.postgrest["milking_events"].delete {
-                                    filter { eq("id", event.id) }
-                                }
+                                try { SupabaseClient.client.postgrest["milking_events"].delete { filter { eq("id", event.id) } } } catch (e: Exception) {}
                             }
                             milkingDao.delete(event)
-                        } catch (e: Exception) {
-                            // ignore
                         }
                     }
-                }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
-                }
+                }) { Icon(Icons.Default.Delete, "Delete", tint = Color.LightGray) }
 
                 Icon(
-                    imageVector = if (event.isSynced)
-                        Icons.Default.CloudDone
-                    else
-                        Icons.Default.CloudOff,
-                    contentDescription = if (event.isSynced) "Synced" else "Pending Sync",
+                    imageVector = if (event.isSynced) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                    contentDescription = if (event.isSynced) "Synced" else "Pending",
                     tint = if (event.isSynced) Color(0xFF4CAF50) else Color(0xFFF44336),
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
