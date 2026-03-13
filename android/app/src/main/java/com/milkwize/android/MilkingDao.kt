@@ -6,13 +6,13 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface MilkingDao {
     @Insert
-    suspend fun insert(event: LocalEvent): Long
+    suspend fun insert(event: LocalEvent)
 
     @Update
-    suspend fun update(event: LocalEvent): Int
+    suspend fun update(event: LocalEvent)
 
     @Delete
-    suspend fun delete(event: LocalEvent): Int
+    suspend fun delete(event: LocalEvent)
 
     @Query("SELECT * FROM local_milking_events WHERE isSynced = 0 AND ownerId = :userId")
     suspend fun getUnsyncedEvents(userId: String): List<LocalEvent>
