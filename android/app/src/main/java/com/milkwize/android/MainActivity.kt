@@ -586,28 +586,6 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 }
                             } catch (e: Exception) { errorMessage = "Login Failed: ${e.localizedMessage?.take(30)}" } finally { isLoading = false }
                         }
-                        if (isRegistering) {
-                            SupabaseClient.client.auth.signUpWith(Email) {
-                                this.email = email
-                                this.password = password
-                            }
-                            // After sign up, wait for the ID and create the admin record
-                            val newUser = SupabaseClient.client.auth.currentUserOrNull()
-                            newUser?.let { ensureAdminRecordExists(it.id, email) }
-
-                            errorMessage = "Account Created. Please Login."
-                            isRegistering = false
-                        } else {
-                            SupabaseClient.client.auth.signInWith(Email) {
-                                this.email = email
-                                this.password = password
-                            }
-                            // Ensure they are in the admin table even if they signed up elsewhere
-                            val currentUser = SupabaseClient.client.auth.currentUserOrNull()
-                            currentUser?.let { ensureAdminRecordExists(it.id, email) }
-
-                            onLoginSuccess()
-                        }
                     }, 
                     modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 24.dp), 
                     enabled = !isLoading, shape = RoundedCornerShape(12.dp), 
@@ -639,30 +617,6 @@ fun ModernEventCard(event: LocalEvent, cowName: String, milkingDao: MilkingDao, 
                 IconButton(onClick = { scope.launch { withContext(Dispatchers.IO) { milkingDao.delete(event) } } }) { Icon(Icons.Default.Delete, "Delete", tint = AlertRed.copy(alpha = 0.6f)) }
                 Icon(imageVector = if (event.isSynced) Icons.Default.CloudDone else Icons.Default.CloudOff, contentDescription = null, tint = if (event.isSynced) SuccessGreen else AlertRed, modifier = Modifier.size(26.dp))
             }
-        }
-    }
-}
-
-suspend fun ensureAdminRecordExists(userId: String, email: String) {
-    withContext(Dispatchers.IO) {
-        try {
-            // 1. Check if the user is already in the admins table
-            val existing = SupabaseClient.client.postgrest["admins"]
-                .select { filter { eq("id", userId) } }
-                .decodeSingleOrNull<Map<String, String>>()
-
-            // 2. If not, create the record
-            if (existing == null) {
-                val newAdmin = mapOf(
-                    "id" to userId,
-                    "email" to email,
-                    "created_at" to java.time.OffsetDateTime.now().toString()
-                )
-                SupabaseClient.client.postgrest["admins"].insert(newAdmin)
-                Log.d("Setup", "New Admin record created for $email")
-            }
-        } catch (e: Exception) {
-            Log.e("Setup", "Admin sync failed: ${e.localizedMessage}")
         }
     }
 }
