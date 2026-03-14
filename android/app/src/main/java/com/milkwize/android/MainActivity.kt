@@ -51,6 +51,12 @@ val PureWhite = Color(0xFFFFFFFF)
 val JetBlack = Color(0xFF000000)
 val BackgroundGray = Color(0xFFF2F4F7)
 val HighContrastGray = Color(0xFF333333)
+val BorderGrayColor = Color(0xFFB0BEC5) // Renamed to avoid confusion
+
+// --- Warm & Welcoming Palette ---
+val WarmCream = Color(0xFFFFFDF5)
+val GoldenAmber = Color(0xFFFFB300)
+val SoftPeach = Color(0xFFFFE0B2)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -183,7 +189,7 @@ fun MilkingDashboard() {
                                                         delay(2000)
                                                         showSyncSuccess = false
                                                     } else {
-                                                        statusMessage = "Sync Error: ${result.exceptionOrNull()?.localizedMessage}"
+                                                        statusMessage = "Sync Error: ${result.exceptionOrNull()?.localizedMessage?.take(20)}"
                                                     }
                                                 }
                                             }
@@ -533,42 +539,44 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(RoyalBlue, DeepPurple))).padding(24.dp)) {
-        Card(modifier = Modifier.align(Alignment.Center).fillMaxWidth(), shape = RoundedCornerShape(32.dp), colors = CardDefaults.cardColors(containerColor = PureWhite)) {
+    // Welcoming Warm Background (Cream to Peach Gradient)
+    Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(WarmCream, SoftPeach))).padding(24.dp)) {
+        Card(modifier = Modifier.align(Alignment.Center).fillMaxWidth(), shape = RoundedCornerShape(32.dp), colors = CardDefaults.cardColors(containerColor = PureWhite), elevation = CardDefaults.cardElevation(8.dp)) {
             Column(modifier = Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Agriculture, null, tint = RoyalBlue, modifier = Modifier.size(64.dp))
+                Icon(Icons.Default.Agriculture, null, tint = GoldenAmber, modifier = Modifier.size(72.dp))
                 Spacer(Modifier.height(16.dp))
-                Text(text = if (isRegistering) "Farm Registration" else "Farmer Sign In", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black), color = JetBlack)
+                Text(text = if (isRegistering) "Grow Your Farm" else "Welcome Back", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold), color = JetBlack)
+                Text(text = if (isRegistering) "Create your MilkWize account" else "Sign in to manage your herd", style = MaterialTheme.typography.bodyMedium, color = HighContrastGray)
                 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(28.dp))
                 OutlinedTextField(
                     value = email, onValueChange = { email = it }, 
-                    label = { Text("Email Address", fontWeight = FontWeight.Black, color = RoyalBlue) }, 
-                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                    textStyle = TextStyle(color = JetBlack, fontWeight = FontWeight.Black, fontSize = 16.sp),
+                    label = { Text("Email Address", fontWeight = FontWeight.Bold) }, 
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+                    textStyle = TextStyle(color = JetBlack, fontWeight = FontWeight.Medium, fontSize = 16.sp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = RoyalBlue, 
+                        focusedBorderColor = GoldenAmber, 
                         unfocusedBorderColor = HighContrastGray, 
-                        focusedContainerColor = PureWhite, 
-                        unfocusedContainerColor = PureWhite,
-                        focusedTextColor = JetBlack,
-                        unfocusedTextColor = JetBlack
-                    )
+                        focusedContainerColor = WarmCream.copy(alpha = 0.3f),
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedLabelColor = GoldenAmber
+                    ),
+                    leadingIcon = { Icon(Icons.Default.Email, null, tint = GoldenAmber) }
                 )
                 OutlinedTextField(
                     value = password, onValueChange = { password = it }, 
-                    label = { Text("Secure Password", fontWeight = FontWeight.Black, color = RoyalBlue) }, 
+                    label = { Text("Password", fontWeight = FontWeight.Bold) }, 
                     visualTransformation = PasswordVisualTransformation(), 
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp), shape = RoundedCornerShape(12.dp),
-                    textStyle = TextStyle(color = JetBlack, fontWeight = FontWeight.Black, fontSize = 16.sp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp), shape = RoundedCornerShape(16.dp),
+                    textStyle = TextStyle(color = JetBlack, fontWeight = FontWeight.Medium, fontSize = 16.sp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = RoyalBlue, 
-                        unfocusedBorderColor = HighContrastGray, 
-                        focusedContainerColor = PureWhite, 
-                        unfocusedContainerColor = PureWhite,
-                        focusedTextColor = JetBlack,
-                        unfocusedTextColor = JetBlack
-                    )
+                        focusedBorderColor = GoldenAmber, 
+                        unfocusedBorderColor = HighContrastGray,
+                        focusedContainerColor = WarmCream.copy(alpha = 0.3f),
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedLabelColor = GoldenAmber
+                    ),
+                    leadingIcon = { Icon(Icons.Default.Lock, null, tint = GoldenAmber) }
                 )
 
                 Button(
@@ -587,16 +595,16 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                             } catch (e: Exception) { errorMessage = "Login Failed: ${e.localizedMessage?.take(30)}" } finally { isLoading = false }
                         }
                     }, 
-                    modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 24.dp), 
-                    enabled = !isLoading, shape = RoundedCornerShape(12.dp), 
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = PureWhite)
+                    modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 28.dp), 
+                    enabled = !isLoading, shape = RoundedCornerShape(16.dp), 
+                    colors = ButtonDefaults.buttonColors(containerColor = GoldenAmber, contentColor = JetBlack)
                 ) {
-                    if (isLoading) CircularProgressIndicator(color = PureWhite, modifier = Modifier.size(24.dp))
-                    else Text(if (isRegistering) "CREATE ACCOUNT" else "SIGN IN", fontWeight = FontWeight.Black, color = PureWhite)
+                    if (isLoading) CircularProgressIndicator(color = JetBlack, modifier = Modifier.size(24.dp))
+                    else Text(if (isRegistering) "JOIN THE HERD" else "START MILKING", fontWeight = FontWeight.ExtraBold, color = JetBlack, fontSize = 16.sp)
                 }
 
-                TextButton(onClick = { isRegistering = !isRegistering }, modifier = Modifier.padding(top = 10.dp)) {
-                    Text(if (isRegistering) "Have an account? Login" else "New Farmer? Join Here", color = DeepPurple, fontWeight = FontWeight.Black)
+                TextButton(onClick = { isRegistering = !isRegistering }, modifier = Modifier.padding(top = 12.dp)) {
+                    Text(if (isRegistering) "Already a member? Sign in" else "New farmer? Join MilkWize here", color = RoyalBlue, fontWeight = FontWeight.Bold)
                 }
                 if (errorMessage.isNotEmpty()) Text(errorMessage, color = AlertRed, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp))
             }
