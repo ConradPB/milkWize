@@ -586,6 +586,28 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 }
                             } catch (e: Exception) { errorMessage = "Login Failed: ${e.localizedMessage?.take(30)}" } finally { isLoading = false }
                         }
+                        if (isRegistering) {
+                            SupabaseClient.client.auth.signUpWith(Email) {
+                                this.email = email
+                                this.password = password
+                            }
+                            // After sign up, wait for the ID and create the admin record
+                            val newUser = SupabaseClient.client.auth.currentUserOrNull()
+                            newUser?.let { ensureAdminRecordExists(it.id, email) }
+
+                            errorMessage = "Account Created. Please Login."
+                            isRegistering = false
+                        } else {
+                            SupabaseClient.client.auth.signInWith(Email) {
+                                this.email = email
+                                this.password = password
+                            }
+                            // Ensure they are in the admin table even if they signed up elsewhere
+                            val currentUser = SupabaseClient.client.auth.currentUserOrNull()
+                            currentUser?.let { ensureAdminRecordExists(it.id, email) }
+
+                            onLoginSuccess()
+                        }
                     }, 
                     modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 24.dp), 
                     enabled = !isLoading, shape = RoundedCornerShape(12.dp), 
