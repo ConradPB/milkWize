@@ -5,13 +5,11 @@ import kotlinx.serialization.SerialName
 
 @Serializable
 data class MilkingEvent(
-    val id: String? = null,
-
     @SerialName("owner_id")
-    val ownerId: String? = null,
+    val ownerId: String,
 
     @SerialName("recorded_by")
-    val recordedBy: String? = null,
+    val recordedBy: String,
 
     @SerialName("cow_id")
     val cowId: String,
@@ -20,8 +18,8 @@ data class MilkingEvent(
     val milkLiters: Double,
 
     @SerialName("milking_time")
-    val milkingTime: String? = null,
+    val milkingTime: String,
 
-    @SerialName("created_at")
-    val createdAt: String? = null
+    @SerialName("id")
+    val id: String? = null
 )

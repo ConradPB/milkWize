@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface MilkingDao {
     @Insert
-    suspend fun insert(event: LocalEvent)
+    suspend fun insert(event: LocalEvent): Long
 
     @Update
     suspend fun update(event: LocalEvent)
