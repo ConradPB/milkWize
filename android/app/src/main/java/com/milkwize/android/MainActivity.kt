@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.milkwize.android.ui.theme.*
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,6 +42,8 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,66 +90,85 @@ suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase:
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MilkingDashboard() {
-    var isLoggedIn by remember { mutableStateOf(false) }
+    val sessionStatus by SupabaseClient.client.auth.sessionStatus.collectAsState()
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     val scope = rememberCoroutineScope()
 
-    if (!isLoggedIn) {
-        LoginScreen(onLoginSuccess = { isLoggedIn = true })
-    } else {
-        val context = LocalContext.current
-        val db = remember { AppDatabase.getDatabase(context) }
-        val milkingDao = db.milkingDao()
-        val user = SupabaseClient.client.auth.currentUserOrNull()
-        val currentUserId = user?.id ?: ""
+    // Handle authentication state
+    when (sessionStatus) {
+        is SessionStatus.Authenticated -> {
+            val user = (sessionStatus as SessionStatus.Authenticated).session.user
+            val currentUserId = user?.id ?: ""
+            val context = LocalContext.current
+            val db = remember { AppDatabase.getDatabase(context) }
+            val milkingDao = db.milkingDao()
 
-        // Fetch profile and initial data
-        LaunchedEffect(currentUserId) {
-            if (currentUserId.isNotEmpty()) {
-                try {
-                    val profile = withContext(Dispatchers.IO) {
-                        SupabaseClient.client.postgrest["profiles"]
-                            .select { filter { eq("id", currentUserId) } }
-                            .decodeSingle<UserProfile>()
+            // Fetch profile and initial data with fallback to metadata
+            LaunchedEffect(currentUserId) {
+                if (currentUserId.isNotEmpty()) {
+                    try {
+                        val profile = withContext(Dispatchers.IO) {
+                            SupabaseClient.client.postgrest["profiles"]
+                                .select { filter { eq("id", currentUserId) } }
+                                .decodeSingle<UserProfile>()
+                        }
+                        userProfile = profile
+                    } catch (e: Exception) {
+                        Log.e("Auth", "Profile fetch failed, using fallback: ${e.message}")
+                        // Fallback: Use data from user metadata if the profiles table fetch fails or is slow
+                        val role = user?.userMetadata?.get("role")?.jsonPrimitive?.contentOrNull ?: "farmer"
+                        val farmCode = user?.userMetadata?.get("farm_code")?.jsonPrimitive?.contentOrNull
+                        userProfile = UserProfile(
+                            id = currentUserId,
+                            email = user?.email ?: "",
+                            role = role,
+                            farm_code = farmCode
+                        )
                     }
-                    userProfile = profile
-                } catch (e: Exception) {
-                    Log.e("Auth", "Error fetching profile: ${e.message}")
+                }
+            }
+
+            Scaffold(
+                containerColor = MilkWhite,
+                topBar = {
+                    Surface(shadowElevation = 4.dp) {
+                        CenterAlignedTopAppBar(
+                            title = { Text("MILKWIZE", fontWeight = FontWeight.Black, color = ForestGreen, letterSpacing = 2.sp) },
+                            actions = {
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) { 
+                                            SupabaseClient.client.auth.signOut()
+                                            db.clearAllTables()
+                                        }
+                                        userProfile = null // Reset profile on logout
+                                    }
+                                }) {
+                                    Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = EarthySlate)
+                                }
+                            },
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = PaperWhite)
+                        )
+                    }
+                }
+            ) { padding ->
+                if (userProfile == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = ForestGreen)
+                    }
+                } else {
+                    UnifiedView(padding, userProfile!!, milkingDao, scope)
                 }
             }
         }
-
-        Scaffold(
-            containerColor = MilkWhite,
-            topBar = {
-                Surface(shadowElevation = 4.dp) {
-                    CenterAlignedTopAppBar(
-                        title = { Text("MILKWIZE", fontWeight = FontWeight.Black, color = ForestGreen, letterSpacing = 2.sp) },
-                        actions = {
-                            IconButton(onClick = {
-                                scope.launch {
-                                    withContext(Dispatchers.IO) { 
-                                        SupabaseClient.client.auth.signOut()
-                                        db.clearAllTables()
-                                    }
-                                    isLoggedIn = false
-                                }
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = EarthySlate)
-                            }
-                        },
-                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = PaperWhite)
-                    )
-                }
+        is SessionStatus.Initializing -> {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = ForestGreen)
             }
-        ) { padding ->
-            if (userProfile == null) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = ForestGreen)
-                }
-            } else {
-                UnifiedView(padding, userProfile!!, milkingDao, scope)
-            }
+        }
+        else -> {
+            // Not authenticated or other states
+            LoginScreen(onLoginSuccess = { /* sessionStatus will update automatically */ })
         }
     }
 }
@@ -235,11 +257,18 @@ fun UnifiedView(padding: PaddingValues, profile: UserProfile, milkingDao: Milkin
                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ForestGreen, focusedLabelColor = ForestGreen)
                             )
                             ExposedDropdownMenu(expanded = isExpanded, onDismissRequest = { isExpanded = false }, modifier = Modifier.background(PaperWhite)) {
-                                cowList.forEach { cow ->
+                                if (cowList.isEmpty()) {
                                     DropdownMenuItem(
-                                        text = { Text(cow.name, fontWeight = FontWeight.Bold) },
-                                        onClick = { selectedCow = cow; isExpanded = false }
+                                        text = { Text("No cows found", color = WarmGray) },
+                                        onClick = { isExpanded = false }
                                     )
+                                } else {
+                                    cowList.forEach { cow ->
+                                        DropdownMenuItem(
+                                            text = { Text(cow.name, fontWeight = FontWeight.Bold) },
+                                            onClick = { selectedCow = cow; isExpanded = false }
+                                        )
+                                    }
                                 }
                             }
                         }
