@@ -113,6 +113,69 @@ suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase:
 @Composable
 fun MilkingDashboard() {
     var isLoggedIn by remember { mutableStateOf(false) }
+    var userProfile by remember { mutableStateOf<UserProfile?>(null) }
+    val scope = rememberCoroutineScope()
+
+    if (!isLoggedIn) {
+        LoginScreen(onLoginSuccess = { isLoggedIn = true })
+    } else {
+        val user = SupabaseClient.client.auth.currentUserOrNull()
+
+        // Fetch profile once logged in
+        LaunchedEffect(user?.id) {
+            if (user != null) {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        SupabaseClient.client.postgrest["profiles"]
+                            .select { filter { eq("id", user.id) } }
+                            .decodeSingle<UserProfile>()
+                    }
+                    userProfile = result
+                } catch (e: Exception) {
+                    Log.e("Auth", "Error fetching profile: ${e.message}")
+                }
+            }
+        }
+
+        Scaffold(
+            containerColor = MilkWhite,
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = { Text("MILKWIZE", fontWeight = FontWeight.Black, color = ForestGreen) },
+                    actions = {
+                        IconButton(onClick = {
+                            scope.launch {
+                                SupabaseClient.client.auth.signOut()
+                                isLoggedIn = false
+                            }
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = EarthySlate)
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = PaperWhite)
+                )
+            }
+        ) { padding ->
+            if (userProfile == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = ForestGreen)
+                }
+            } else {
+                Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+                    if (userProfile?.role == "farmer") {
+                        FarmerView(userProfile!!)
+                    } else {
+                        CustomerView(userProfile!!)
+                    }
+                }
+            }
+        }
+    }
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MilkingDashboard() {
+    var isLoggedIn by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     if (!isLoggedIn) {
@@ -537,6 +600,19 @@ fun AddCowDialog(onDismiss: () -> Unit, onCowAdded: () -> Unit) {
             }
         }
     )
+}
+
+@Composable
+fun FarmerView(profile: UserProfile) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SummaryStatCard("YIELD", "142L", ForestGreen, Icons.Default.WaterDrop, Modifier.weight(1f))
+            SummaryStatCard("HERD", "12", SunlitAmber, Icons.Default.Pets, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(20.dp))
+        // EXISTING "NEW YIELD ENTRY" CARD GOES HERE
+        Text("Farmer Log active for ${profile.email}", color = WarmGray, fontSize = 12.sp)
+    }
 }
 
 @Composable
