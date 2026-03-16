@@ -738,6 +738,7 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>) {
         }
     }
 }
+
 @Composable
 fun SimpleBarChart(data: List<LocalEvent>) {
     val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 10.0).toFloat()
