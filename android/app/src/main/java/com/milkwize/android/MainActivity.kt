@@ -95,9 +95,9 @@ fun MilkingDashboard() {
     val scope = rememberCoroutineScope()
 
     // Handle authentication state
-    when (sessionStatus) {
+    when (val status = sessionStatus) {
         is SessionStatus.Authenticated -> {
-            val user = (sessionStatus as SessionStatus.Authenticated).session.user
+            val user = status.session.user
             val currentUserId = user?.id ?: ""
             val context = LocalContext.current
             val db = remember { AppDatabase.getDatabase(context) }
@@ -116,8 +116,9 @@ fun MilkingDashboard() {
                     } catch (e: Exception) {
                         Log.e("Auth", "Profile fetch failed, using fallback: ${e.message}")
                         // Fallback: Use data from user metadata if the profiles table fetch fails or is slow
-                        val role = user?.userMetadata?.get("role")?.jsonPrimitive?.contentOrNull ?: "farmer"
-                        val farmCode = user?.userMetadata?.get("farm_code")?.jsonPrimitive?.contentOrNull
+                        val metadata = user?.userMetadata
+                        val role = metadata?.get("role")?.jsonPrimitive?.contentOrNull ?: "farmer"
+                        val farmCode = metadata?.get("farm_code")?.jsonPrimitive?.contentOrNull
                         userProfile = UserProfile(
                             id = currentUserId,
                             email = user?.email ?: "",
@@ -131,9 +132,9 @@ fun MilkingDashboard() {
             Scaffold(
                 containerColor = MilkWhite,
                 topBar = {
-                    Surface(shadowElevation = 4.dp) {
+                    Surface(shadowElevation = 8.dp) {
                         CenterAlignedTopAppBar(
-                            title = { Text("MILKWIZE", fontWeight = FontWeight.Black, color = ForestGreen, letterSpacing = 2.sp) },
+                            title = { Text("MILKWIZE", fontWeight = FontWeight.Black, color = PaperWhite, letterSpacing = 2.sp) },
                             actions = {
                                 IconButton(onClick = {
                                     scope.launch {
@@ -144,10 +145,10 @@ fun MilkingDashboard() {
                                         userProfile = null // Reset profile on logout
                                     }
                                 }) {
-                                    Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = EarthySlate)
+                                    Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = PaperWhite)
                                 }
                             },
-                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = PaperWhite)
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = SunlitAmber)
                         )
                     }
                 }
@@ -168,7 +169,7 @@ fun MilkingDashboard() {
         }
         else -> {
             // Not authenticated or other states
-            LoginScreen(onLoginSuccess = { /* sessionStatus will update automatically */ })
+            LoginScreen(onLoginSuccess = { /* status will update automatically */ })
         }
     }
 }
@@ -188,10 +189,13 @@ fun UnifiedView(padding: PaddingValues, profile: UserProfile, milkingDao: Milkin
     var isSyncing by remember { mutableStateOf(false) }
     var showAddCowDialog by remember { mutableStateOf(false) }
     var showManageHerdDialog by remember { mutableStateOf(false) }
+    
+    // Trigger for refreshing cow list
+    var refreshCowsTrigger by remember { mutableIntStateOf(0) }
 
     val todayDate = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")) }
 
-    LaunchedEffect(profile.id) {
+    LaunchedEffect(profile.id, refreshCowsTrigger) {
         try {
             cowList = withContext(Dispatchers.IO) {
                 SupabaseClient.client.postgrest["cows"]
@@ -368,8 +372,45 @@ fun UnifiedView(padding: PaddingValues, profile: UserProfile, milkingDao: Milkin
         }
     }
 
-    if (showAddCowDialog) AddCowDialog(onDismiss = { showAddCowDialog = false }, onCowAdded = { showAddCowDialog = false })
-    if (showManageHerdDialog) ManageHerdDialog(cows = cowList, onDismiss = { showManageHerdDialog = false }, onUpdate = { _, _ -> }, onDelete = { _ -> })
+    if (showAddCowDialog) AddCowDialog(onDismiss = { showAddCowDialog = false }, onCowAdded = { refreshCowsTrigger++ })
+    if (showManageHerdDialog) {
+        ManageHerdDialog(
+            cows = cowList, 
+            onDismiss = { showManageHerdDialog = false }, 
+            onUpdate = { cow, newTag ->
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            SupabaseClient.client.postgrest["cows"]
+                                .update({
+                                    set("tag", newTag)
+                                }) { 
+                                    filter { 
+                                        eq("id", cow.id) 
+                                    } 
+                                }
+                        }
+                        refreshCowsTrigger++
+                    } catch (e: Exception) { Log.e("Herd", "Update failed: ${e.message}") }
+                }
+            }, 
+            onDelete = { cow ->
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            SupabaseClient.client.postgrest["cows"]
+                                .delete { 
+                                    filter { 
+                                        eq("id", cow.id) 
+                                    } 
+                                }
+                        }
+                        refreshCowsTrigger++
+                    } catch (e: Exception) { Log.e("Herd", "Delete failed: ${e.message}") }
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -484,6 +525,7 @@ fun AddCowDialog(onDismiss: () -> Unit, onCowAdded: () -> Unit) {
                                 val newCow = Cow(id = UUID.randomUUID().toString(), ownerId = ownerId, name = tag, breed = breed)
                                 withContext(Dispatchers.IO) { SupabaseClient.client.postgrest["cows"].insert(newCow) }
                                 onCowAdded()
+                                onDismiss()
                             } catch (e: Exception) { } finally { isLoading = false }
                         }
                     }
@@ -517,7 +559,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(modifier = Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Agriculture, null, tint = SunlitAmber, modifier = Modifier.size(72.dp))
+                Icon(Icons.Default.Agriculture, null, tint = ForestGreen, modifier = Modifier.size(72.dp))
                 Spacer(Modifier.height(16.dp))
 
                 Text(
@@ -566,12 +608,12 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     value = email, onValueChange = { email = it },
                     label = { Text("Email Address", fontWeight = FontWeight.Bold) },
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
-                    leadingIcon = { Icon(Icons.Default.Email, null, tint = SunlitAmber) },
+                    leadingIcon = { Icon(Icons.Default.Email, null, tint = ForestGreen) },
                     textStyle = TextStyle(color = EarthySlate, fontWeight = FontWeight.Medium, fontSize = 16.sp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SunlitAmber, 
+                        focusedBorderColor = ForestGreen, 
                         unfocusedBorderColor = WarmGray,
-                        focusedLabelColor = SunlitAmber,
+                        focusedLabelColor = ForestGreen,
                         focusedContainerColor = WarmCream.copy(alpha = 0.3f),
                         unfocusedContainerColor = Color.Transparent
                     )
@@ -582,12 +624,12 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     label = { Text("Password", fontWeight = FontWeight.Bold) },
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth().padding(top = 16.dp), shape = RoundedCornerShape(16.dp),
-                    leadingIcon = { Icon(Icons.Default.Lock, null, tint = SunlitAmber) },
+                    leadingIcon = { Icon(Icons.Default.Lock, null, tint = ForestGreen) },
                     textStyle = TextStyle(color = EarthySlate, fontWeight = FontWeight.Medium, fontSize = 16.sp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SunlitAmber, 
+                        focusedBorderColor = ForestGreen, 
                         unfocusedBorderColor = WarmGray,
-                        focusedLabelColor = SunlitAmber,
+                        focusedLabelColor = ForestGreen,
                         focusedContainerColor = WarmCream.copy(alpha = 0.3f),
                         unfocusedContainerColor = Color.Transparent
                     )
@@ -599,12 +641,12 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                         label = { Text("Farm Code", fontWeight = FontWeight.Bold) },
                         modifier = Modifier.fillMaxWidth().padding(top = 16.dp), shape = RoundedCornerShape(16.dp),
                         placeholder = { Text("e.g. MILK-12") },
-                        leadingIcon = { Icon(Icons.Default.VpnKey, null, tint = SunlitAmber) },
+                        leadingIcon = { Icon(Icons.Default.VpnKey, null, tint = ForestGreen) },
                         textStyle = TextStyle(color = EarthySlate, fontWeight = FontWeight.Medium, fontSize = 16.sp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SunlitAmber, 
+                            focusedBorderColor = ForestGreen, 
                             unfocusedBorderColor = WarmGray,
-                            focusedLabelColor = SunlitAmber,
+                            focusedLabelColor = ForestGreen,
                             focusedContainerColor = WarmCream.copy(alpha = 0.3f),
                             unfocusedContainerColor = Color.Transparent
                         )
@@ -654,6 +696,72 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 if (errorMessage.isNotEmpty()) {
                     Text(errorMessage, color = TerracottaRed, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AnalyticsScreen(localEvents: List<LocalEvent>) {
+    val weeklyData = remember(localEvents) {
+        // Group last 7 days of data for the chart
+        localEvents.take(7).reversed()
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        item {
+            Text("Weekly Performance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(16.dp))
+
+            // Simple Bar Chart Card
+            Card(
+                modifier = Modifier.fillMaxWidth().height(250.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = PaperWhite)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    SimpleBarChart(weeklyData)
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+
+        item {
+            Text("Full History", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(12.dp))
+        }
+
+        items(localEvents) { event ->
+            // Use your existing ModernEventCard here
+            // But styled for a list view
+            HistoryListItem(event)
+        }
+    }
+}
+@Composable
+fun SimpleBarChart(data: List<LocalEvent>) {
+    val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 10.0).toFloat()
+
+    Row(
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        data.forEach { event ->
+            val barHeightFraction = (event.milkLiters.toFloat() / maxYield).coerceAtLeast(0.1f)
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("${event.milkLiters}L", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ForestGreen)
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .width(24.dp)
+                        .fillMaxHeight(barHeightFraction * 0.8f)
+                        .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                        .background(ForestGreen)
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(event.timestamp.split("-").last().take(2), fontSize = 10.sp, color = WarmGray)
             }
         }
     }
