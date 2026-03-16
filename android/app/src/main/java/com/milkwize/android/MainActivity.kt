@@ -753,38 +753,74 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>) {
         }
 
         items(localEvents) { event ->
-            // Use your existing ModernEventCard here
+            // Use existing ModernEventCard here
             // But styled for a list view
             HistoryListItem(event)
         }
     }
 }
 
-@Composable
-fun SimpleBarChart(data: List<LocalEvent>) {
-    val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 10.0).toFloat()
+    @Composable
+    fun SimpleBarChart(data: List<LocalEvent>) {
+        val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 10.0).toFloat()
 
-    Row(
-        modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        data.forEach { event ->
-            val barHeightFraction = (event.milkLiters.toFloat() / maxYield).coerceAtLeast(0.1f)
+        Row(
+            modifier = Modifier.fillMaxSize().padding(top = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            data.forEachIndexed { index, event ->
+                val barHeightFraction = (event.milkLiters.toFloat() / maxYield).coerceAtLeast(0.1f)
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("${event.milkLiters}L", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ForestGreen)
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .width(24.dp)
-                        .fillMaxHeight(barHeightFraction * 0.8f)
-                        .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                        .background(ForestGreen)
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(event.timestamp.split("-").last().take(2), fontSize = 10.sp, color = WarmGray)
+                // Logic for Comparison Line / Indicator
+                val isImproved = if (index > 0) {
+                    event.milkLiters > data[index - 1].milkLiters
+                } else null
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Yield Text with Trend Icon
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${event.milkLiters}L",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (isImproved == true) SageSuccess else if (isImproved == false) TerracottaRed else EarthySlate
+                        )
+                        if (isImproved != null) {
+                            Icon(
+                                imageVector = if (isImproved) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                contentDescription = null,
+                                modifier = Modifier.size(10.dp),
+                                tint = if (isImproved) SageSuccess else TerracottaRed
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // The Bar
+                    Box(
+                        modifier = Modifier
+                            .width(28.dp)
+                            .fillMaxHeight(barHeightFraction * 0.7f)
+                            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(ForestGreen, ForestGreen.copy(alpha = 0.7f))
+                                )
+                            )
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Short Date Label (e.g., "14 Mar")
+                    Text(
+                        text = event.timestamp.substring(8, 10) + "/" + event.timestamp.substring(5, 7),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = WarmGray
+                    )
+                }
             }
         }
     }
-}
