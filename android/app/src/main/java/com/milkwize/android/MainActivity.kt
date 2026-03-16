@@ -183,6 +183,10 @@ fun MilkingDashboard() {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = ForestGreen)
             }
+            Box(modifier = Modifier.padding(padding)) {
+                if (selectedTab == 0) {
+                    if (userProfile?.role == "farmer") FarmerView(userProfile!!) else CustomerView(userProfile!!)
+                }
         }
         else -> {
             // Not authenticated or other states
