@@ -151,6 +151,22 @@ fun MilkingDashboard() {
                             colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = SunlitAmber)
                         )
                     }
+                },
+                bottomBar = {
+                    NavigationBar(containerColor = PaperWhite) {
+                        NavigationBarItem(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            icon = { Icon(Icons.Default.Dashboard, "Home") },
+                            label = { Text("Log") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            icon = { Icon(Icons.AutoMirrored.Filled.List, "History") },
+                            label = { Text("Reports") }
+                        )
+                    }
                 }
             ) { padding ->
                 if (userProfile == null) {
