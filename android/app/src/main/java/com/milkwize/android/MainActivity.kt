@@ -174,6 +174,7 @@ fun MilkingDashboard() {
                         CircularProgressIndicator(color = ForestGreen)
                     }
                 } else {
+                    AnalyticsScreen(localEvents)
                     UnifiedView(padding, userProfile!!, milkingDao, scope)
                 }
             }
