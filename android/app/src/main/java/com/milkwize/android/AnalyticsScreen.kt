@@ -53,7 +53,7 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>, cowList: List<Cow>) {
             }
             Spacer(Modifier.height(24.dp))
             
-            // Top Performer Card
+            // Top Performer Card right below SimpleBarChart
             if (topEvent != null && topCow != null) {
                 TopPerformerCard(
                     cowName = topCow.name,
@@ -78,7 +78,7 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>, cowList: List<Cow>) {
 
 @Composable
 fun SimpleBarChart(data: List<LocalEvent>) {
-    val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 10.0).toFloat()
+    val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 1.0).coerceAtLeast(1.0).toFloat()
 
     Row(
         modifier = Modifier.fillMaxSize().padding(top = 16.dp),
@@ -88,13 +88,11 @@ fun SimpleBarChart(data: List<LocalEvent>) {
         data.forEachIndexed { index, event ->
             val barHeightFraction = (event.milkLiters.toFloat() / maxYield).coerceAtLeast(0.1f)
 
-            // Logic for Comparison Line / Indicator
             val isImproved = if (index > 0) {
                 event.milkLiters > data[index - 1].milkLiters
             } else null
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // Yield Text with Trend Icon
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "${event.milkLiters}L",
@@ -114,7 +112,6 @@ fun SimpleBarChart(data: List<LocalEvent>) {
 
                 Spacer(Modifier.height(8.dp))
 
-                // The Bar
                 Box(
                     modifier = Modifier
                         .width(28.dp)
@@ -129,7 +126,6 @@ fun SimpleBarChart(data: List<LocalEvent>) {
 
                 Spacer(Modifier.height(8.dp))
 
-                // Short Date Label (e.g., "14 Mar")
                 Text(
                     text = if (event.timestamp.length >= 10) {
                         event.timestamp.substring(8, 10) + "/" + event.timestamp.substring(5, 7)
@@ -150,7 +146,7 @@ fun TopPerformerCard(cowName: String, yield: Double, breed: String) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = ForestGreen), // Contrast: Green background
+        colors = CardDefaults.cardColors(containerColor = ForestGreen),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Row(
