@@ -822,5 +822,32 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>) {
                     )
                 }
             }
+
+            @Composable
+            fun TopPerformerCard(cowName: String, yield: Double, breed: String) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = ForestGreen), // Contrast: Green background
+                    elevation = CardDefaults.cardElevation(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(20.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("TOP PERFORMER", style = MaterialTheme.typography.labelMedium, color = PaperWhite.copy(alpha = 0.7f), fontWeight = FontWeight.Bold)
+                            Text(cowName.uppercase(), style = MaterialTheme.typography.headlineSmall, color = PaperWhite, fontWeight = FontWeight.Black)
+                            Text(breed, style = MaterialTheme.typography.bodySmall, color = SageSuccess, fontWeight = FontWeight.Bold)
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Icon(Icons.Default.Stars, contentDescription = null, tint = SunlitAmber, modifier = Modifier.size(32.dp))
+                            Text("${"%.1f".format(yield)} L", style = MaterialTheme.typography.titleLarge, color = PaperWhite, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
         }
     }
