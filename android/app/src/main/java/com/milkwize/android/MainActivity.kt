@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -92,6 +93,7 @@ suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase:
 fun MilkingDashboard() {
     val sessionStatus by SupabaseClient.client.auth.sessionStatus.collectAsState()
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
+    var selectedTab by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
     // Handle authentication state
@@ -102,6 +104,10 @@ fun MilkingDashboard() {
             val context = LocalContext.current
             val db = remember { AppDatabase.getDatabase(context) }
             val milkingDao = db.milkingDao()
+            
+            val localEvents by milkingDao.getAllLocally(currentUserId).collectAsState(initial = emptyList())
+            var cowList by remember { mutableStateOf(listOf<Cow>()) }
+            var refreshCowsTrigger by remember { mutableIntStateOf(0) }
 
             // Fetch profile and initial data with fallback to metadata
             LaunchedEffect(currentUserId) {
@@ -115,7 +121,6 @@ fun MilkingDashboard() {
                         userProfile = profile
                     } catch (e: Exception) {
                         Log.e("Auth", "Profile fetch failed, using fallback: ${e.message}")
-                        // Fallback: Use data from user metadata if the profiles table fetch fails or is slow
                         val metadata = user?.userMetadata
                         val role = metadata?.get("role")?.jsonPrimitive?.contentOrNull ?: "farmer"
                         val farmCode = metadata?.get("farm_code")?.jsonPrimitive?.contentOrNull
@@ -127,6 +132,16 @@ fun MilkingDashboard() {
                         )
                     }
                 }
+            }
+
+            LaunchedEffect(currentUserId, refreshCowsTrigger) {
+                try {
+                    cowList = withContext(Dispatchers.IO) {
+                        SupabaseClient.client.postgrest["cows"]
+                            .select { filter { eq("owner_id", currentUserId) } }
+                            .decodeList<Cow>()
+                    }
+                } catch (e: Exception) { Log.e("Supabase", "Cow load fail") }
             }
 
             Scaffold(
@@ -174,8 +189,20 @@ fun MilkingDashboard() {
                         CircularProgressIndicator(color = ForestGreen)
                     }
                 } else {
-                    AnalyticsScreen(localEvents)
-                    UnifiedView(padding, userProfile!!, milkingDao, scope)
+                    Box(modifier = Modifier.padding(padding)) {
+                        if (selectedTab == 0) {
+                            UnifiedView(
+                                profile = userProfile!!,
+                                milkingDao = milkingDao,
+                                scope = scope,
+                                localEvents = localEvents,
+                                cowList = cowList,
+                                onRefreshCows = { refreshCowsTrigger++ }
+                            )
+                        } else {
+                            AnalyticsScreen(localEvents = localEvents, cowList = cowList)
+                        }
+                    }
                 }
             }
         }
@@ -183,13 +210,8 @@ fun MilkingDashboard() {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = ForestGreen)
             }
-            Box(modifier = Modifier.padding(padding)) {
-                if (selectedTab == 0) {
-                    if (userProfile?.role == "farmer") FarmerView(userProfile!!) else CustomerView(userProfile!!)
-                }
         }
         else -> {
-            // Not authenticated or other states
             LoginScreen(onLoginSuccess = { /* status will update automatically */ })
         }
     }
@@ -197,11 +219,16 @@ fun MilkingDashboard() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UnifiedView(padding: PaddingValues, profile: UserProfile, milkingDao: MilkingDao, scope: kotlinx.coroutines.CoroutineScope) {
-    val localEvents by milkingDao.getAllLocally(profile.id).collectAsState(initial = emptyList())
+fun UnifiedView(
+    profile: UserProfile,
+    milkingDao: MilkingDao,
+    scope: kotlinx.coroutines.CoroutineScope,
+    localEvents: List<LocalEvent>,
+    cowList: List<Cow>,
+    onRefreshCows: () -> Unit
+) {
     val unsyncedCount by milkingDao.getUnsyncedCount(profile.id).collectAsState(initial = 0)
     
-    var cowList by remember { mutableStateOf(listOf<Cow>()) }
     var selectedCow by remember { mutableStateOf<Cow?>(null) }
     var isExpanded by remember { mutableStateOf(false) }
     var newAmount by remember { mutableStateOf("") }
@@ -211,23 +238,10 @@ fun UnifiedView(padding: PaddingValues, profile: UserProfile, milkingDao: Milkin
     var showAddCowDialog by remember { mutableStateOf(false) }
     var showManageHerdDialog by remember { mutableStateOf(false) }
     
-    // Trigger for refreshing cow list
-    var refreshCowsTrigger by remember { mutableIntStateOf(0) }
-
     val todayDate = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")) }
 
-    LaunchedEffect(profile.id, refreshCowsTrigger) {
-        try {
-            cowList = withContext(Dispatchers.IO) {
-                SupabaseClient.client.postgrest["cows"]
-                    .select { filter { eq("owner_id", profile.id) } }
-                    .decodeList<Cow>()
-            }
-        } catch (e: Exception) { Log.e("Supabase", "Cow load fail") }
-    }
-
     LazyColumn(
-        modifier = Modifier.padding(padding).fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp)
     ) {
         item {
@@ -393,7 +407,7 @@ fun UnifiedView(padding: PaddingValues, profile: UserProfile, milkingDao: Milkin
         }
     }
 
-    if (showAddCowDialog) AddCowDialog(onDismiss = { showAddCowDialog = false }, onCowAdded = { refreshCowsTrigger++ })
+    if (showAddCowDialog) AddCowDialog(onDismiss = { showAddCowDialog = false }, onCowAdded = onRefreshCows)
     if (showManageHerdDialog) {
         ManageHerdDialog(
             cows = cowList, 
@@ -411,7 +425,7 @@ fun UnifiedView(padding: PaddingValues, profile: UserProfile, milkingDao: Milkin
                                     } 
                                 }
                         }
-                        refreshCowsTrigger++
+                        onRefreshCows()
                     } catch (e: Exception) { Log.e("Herd", "Update failed: ${e.message}") }
                 }
             }, 
@@ -426,7 +440,7 @@ fun UnifiedView(padding: PaddingValues, profile: UserProfile, milkingDao: Milkin
                                     } 
                                 }
                         }
-                        refreshCowsTrigger++
+                        onRefreshCows()
                     } catch (e: Exception) { Log.e("Herd", "Delete failed: ${e.message}") }
                 }
             }
@@ -721,133 +735,3 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         }
     }
 }
-
-@Composable
-fun AnalyticsScreen(localEvents: List<LocalEvent>) {
-    val weeklyData = remember(localEvents) {
-        // Group last 7 days of data for the chart
-        localEvents.take(7).reversed()
-    }
-
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        item {
-            Text("Weekly Performance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-            Spacer(Modifier.height(16.dp))
-
-            // Simple Bar Chart Card
-            Card(
-                modifier = Modifier.fillMaxWidth().height(250.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = PaperWhite)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    SimpleBarChart(weeklyData)
-                }
-            }
-            Spacer(Modifier.height(24.dp))
-        }
-
-        item {
-            Text("Full History", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-            Spacer(Modifier.height(12.dp))
-        }
-
-        items(localEvents) { event ->
-            // Use existing ModernEventCard here
-            // But styled for a list view
-            HistoryListItem(event)
-        }
-    }
-}
-
-    @Composable
-    fun SimpleBarChart(data: List<LocalEvent>) {
-        val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 10.0).toFloat()
-
-        Row(
-            modifier = Modifier.fillMaxSize().padding(top = 16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.Bottom
-        ) {
-            data.forEachIndexed { index, event ->
-                val barHeightFraction = (event.milkLiters.toFloat() / maxYield).coerceAtLeast(0.1f)
-
-                // Logic for Comparison Line / Indicator
-                val isImproved = if (index > 0) {
-                    event.milkLiters > data[index - 1].milkLiters
-                } else null
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    // Yield Text with Trend Icon
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${event.milkLiters}L",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (isImproved == true) SageSuccess else if (isImproved == false) TerracottaRed else EarthySlate
-                        )
-                        if (isImproved != null) {
-                            Icon(
-                                imageVector = if (isImproved) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                                contentDescription = null,
-                                modifier = Modifier.size(10.dp),
-                                tint = if (isImproved) SageSuccess else TerracottaRed
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    // The Bar
-                    Box(
-                        modifier = Modifier
-                            .width(28.dp)
-                            .fillMaxHeight(barHeightFraction * 0.7f)
-                            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(ForestGreen, ForestGreen.copy(alpha = 0.7f))
-                                )
-                            )
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-
-                    // Short Date Label (e.g., "14 Mar")
-                    Text(
-                        text = event.timestamp.substring(8, 10) + "/" + event.timestamp.substring(5, 7),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = WarmGray
-                    )
-                }
-            }
-
-            @Composable
-            fun TopPerformerCard(cowName: String, yield: Double, breed: String) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = ForestGreen), // Contrast: Green background
-                    elevation = CardDefaults.cardElevation(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(20.dp).fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text("TOP PERFORMER", style = MaterialTheme.typography.labelMedium, color = PaperWhite.copy(alpha = 0.7f), fontWeight = FontWeight.Bold)
-                            Text(cowName.uppercase(), style = MaterialTheme.typography.headlineSmall, color = PaperWhite, fontWeight = FontWeight.Black)
-                            Text(breed, style = MaterialTheme.typography.bodySmall, color = SageSuccess, fontWeight = FontWeight.Bold)
-                        }
-
-                        Column(horizontalAlignment = Alignment.End) {
-                            Icon(Icons.Default.Stars, contentDescription = null, tint = SunlitAmber, modifier = Modifier.size(32.dp))
-                            Text("${"%.1f".format(yield)} L", style = MaterialTheme.typography.titleLarge, color = PaperWhite, fontWeight = FontWeight.Black)
-                        }
-                    }
-                }
-            }
-        }
-    }
