@@ -96,7 +96,6 @@ fun MilkingDashboard() {
     var selectedTab by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    // Handle authentication state
     when (val status = sessionStatus) {
         is SessionStatus.Authenticated -> {
             val user = status.session.user
@@ -109,7 +108,6 @@ fun MilkingDashboard() {
             var cowList by remember { mutableStateOf(listOf<Cow>()) }
             var refreshCowsTrigger by remember { mutableIntStateOf(0) }
 
-            // Fetch profile and initial data with fallback to metadata
             LaunchedEffect(currentUserId) {
                 if (currentUserId.isNotEmpty()) {
                     try {
@@ -157,7 +155,7 @@ fun MilkingDashboard() {
                                             SupabaseClient.client.auth.signOut()
                                             db.clearAllTables()
                                         }
-                                        userProfile = null // Reset profile on logout
+                                        userProfile = null
                                     }
                                 }) {
                                     Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = PaperWhite)
@@ -212,7 +210,7 @@ fun MilkingDashboard() {
             }
         }
         else -> {
-            LoginScreen(onLoginSuccess = { /* status will update automatically */ })
+            LoginScreen(onLoginSuccess = { })
         }
     }
 }
@@ -245,7 +243,6 @@ fun UnifiedView(
         contentPadding = PaddingValues(16.dp)
     ) {
         item {
-            // High-Level Stats Row
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 val totalYield = localEvents.sumOf { it.milkLiters }
                 SummaryStatCard("TODAY'S YIELD", "${"%.1f".format(totalYield)}L", ForestGreen, Icons.Default.WaterDrop, Modifier.weight(1f))
@@ -346,10 +343,7 @@ fun UnifiedView(
                             },
                             modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 16.dp),
                             enabled = !isLoading && selectedCow != null && newAmount.isNotEmpty(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = SunlitAmber,
-                                disabledContainerColor = EarthySlate.copy(alpha = 0.6f)
-                            ),
+                            colors = ButtonDefaults.buttonColors(containerColor = SunlitAmber, disabledContainerColor = EarthySlate.copy(alpha = 0.6f)),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             if (isLoading) CircularProgressIndicator(color = PaperWhite, modifier = Modifier.size(24.dp))
@@ -419,11 +413,7 @@ fun UnifiedView(
                             SupabaseClient.client.postgrest["cows"]
                                 .update({
                                     set("tag", newTag)
-                                }) { 
-                                    filter { 
-                                        eq("id", cow.id) 
-                                    } 
-                                }
+                                }) { filter { eq("id", cow.id) } }
                         }
                         onRefreshCows()
                     } catch (e: Exception) { Log.e("Herd", "Update failed: ${e.message}") }
@@ -434,11 +424,7 @@ fun UnifiedView(
                     try {
                         withContext(Dispatchers.IO) {
                             SupabaseClient.client.postgrest["cows"]
-                                .delete { 
-                                    filter { 
-                                        eq("id", cow.id) 
-                                    } 
-                                }
+                                .delete { filter { eq("id", cow.id) } }
                         }
                         onRefreshCows()
                     } catch (e: Exception) { Log.e("Herd", "Delete failed: ${e.message}") }
@@ -722,10 +708,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 }
 
                 TextButton(onClick = { isRegistering = !isRegistering }, modifier = Modifier.padding(top = 12.dp)) {
-                    Text(
-                        if (isRegistering) "Already a member? Sign in" else "New to MilkWize? Join here",
-                        color = ForestGreen, fontWeight = FontWeight.Bold
-                    )
+                    Text(if (isRegistering) "Already a member? Sign in" else "New to MilkWize? Join here", color = ForestGreen, fontWeight = FontWeight.Bold)
                 }
 
                 if (errorMessage.isNotEmpty()) {
