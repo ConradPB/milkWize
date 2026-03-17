@@ -52,7 +52,7 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>, cowList: List<Cow>) {
                 }
             }
             Spacer(Modifier.height(24.dp))
-            
+
             // Top Performer Card right below SimpleBarChart
             if (topEvent != null && topCow != null) {
                 TopPerformerCard(
@@ -77,65 +77,58 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>, cowList: List<Cow>) {
 }
 
 @Composable
-fun SimpleBarChart(data: List<LocalEvent>) {
-    val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 1.0).coerceAtLeast(1.0).toFloat()
+fun AggregatedBarChart(dailyTotals: List<Pair<String, Double>>) {
+    // Determine the highest total in the last 7 days to scale the bars
+    val maxYield = (dailyTotals.maxByOrNull { it.second }?.second ?: 10.0).toFloat()
 
     Row(
         modifier = Modifier.fillMaxSize().padding(top = 16.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.Bottom
     ) {
-        data.forEachIndexed { index, event ->
-            val barHeightFraction = (event.milkLiters.toFloat() / maxYield).coerceAtLeast(0.1f)
+        dailyTotals.forEachIndexed { index, dataPoint ->
+            val dateLabel = dataPoint.first // "2026-03-17"
+            val totalLiters = dataPoint.second
+            val barHeightFraction = (totalLiters.toFloat() / maxYield).coerceAtLeast(0.1f)
 
-            val isImproved = if (index > 0) {
-                event.milkLiters > data[index - 1].milkLiters
-            } else null
+            // Comparison logic: Did we do better than the previous day in the list?
+            val isImproved = if (index > 0) totalLiters > dailyTotals[index - 1].second else null
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Total Text + Arrow
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "${event.milkLiters}L",
-                        fontSize = 10.sp,
+                        text = "${totalLiters.toInt()}L",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         color = if (isImproved == true) SageSuccess else if (isImproved == false) TerracottaRed else EarthySlate
                     )
-                    if (isImproved != null) {
-                        Icon(
-                            imageVector = if (isImproved) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                            contentDescription = null,
-                            modifier = Modifier.size(10.dp),
-                            tint = if (isImproved) SageSuccess else TerracottaRed
-                        )
-                    }
                 }
 
                 Spacer(Modifier.height(8.dp))
 
+                // The Bar (Aggregated)
                 Box(
                     modifier = Modifier
-                        .width(28.dp)
-                        .fillMaxHeight(barHeightFraction * 0.7f)
-                        .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                        .width(32.dp)
+                        .fillMaxHeight(barHeightFraction * 0.75f)
+                        .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
                         .background(
                             brush = Brush.verticalGradient(
-                                colors = listOf(ForestGreen, ForestGreen.copy(alpha = 0.7f))
+                                colors = listOf(ForestGreen, ForestGreen.copy(alpha = 0.8f))
                             )
                         )
                 )
 
                 Spacer(Modifier.height(8.dp))
 
-                Text(
-                    text = if (event.timestamp.length >= 10) {
-                        event.timestamp.substring(8, 10) + "/" + event.timestamp.substring(5, 7)
-                    } else {
-                        "N/A"
-                    },
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = WarmGray
-                )
+                // Date Label (e.g., "17/03")
+                val displayDate = try {
+                    val parts = dateLabel.split("-")
+                    "${parts[2]}/${parts[1]}"
+                } catch (e: Exception) { dateLabel }
+
+                Text(displayDate, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = WarmGray)
             }
         }
     }
