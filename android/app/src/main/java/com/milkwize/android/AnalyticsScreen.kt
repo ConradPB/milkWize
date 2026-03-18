@@ -1,22 +1,23 @@
 package com.milkwize.android
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Stars
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,6 +25,7 @@ import com.milkwize.android.ui.theme.*
 
 @Composable
 fun AnalyticsScreen(localEvents: List<LocalEvent>, cowList: List<Cow>) {
+    val context = LocalContext.current
     val weeklyData = remember(localEvents) {
         // Group last 7 days of data for the chart
         localEvents.take(7).reversed()
@@ -38,22 +40,34 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>, cowList: List<Cow>) {
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         item {
-            Text("Weekly Performance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Performance Insight", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                IconButton(onClick = { exportEventsToCSV(context, localEvents, cowList) }) {
+                    Icon(Icons.Default.Share, contentDescription = "Export CSV", tint = ForestGreen)
+                }
+            }
             Spacer(Modifier.height(16.dp))
 
-            // Simple Bar Chart Card
+            // Improved Bar Chart Card
             Card(
-                modifier = Modifier.fillMaxWidth().height(250.dp),
+                modifier = Modifier.fillMaxWidth().height(280.dp),
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = PaperWhite)
+                colors = CardDefaults.cardColors(containerColor = PaperWhite),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
+                    Text("DAILY PRODUCTION (L)", style = MaterialTheme.typography.labelSmall, color = WarmGray, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(16.dp))
                     SimpleBarChart(weeklyData)
                 }
             }
             Spacer(Modifier.height(24.dp))
-
-            // Top Performer Card right below SimpleBarChart
+            
+            // Top Performer Card
             if (topEvent != null && topCow != null) {
                 TopPerformerCard(
                     cowName = topCow.name,
@@ -77,58 +91,105 @@ fun AnalyticsScreen(localEvents: List<LocalEvent>, cowList: List<Cow>) {
 }
 
 @Composable
-fun AggregatedBarChart(dailyTotals: List<Pair<String, Double>>) {
-    // Determine the highest total in the last 7 days to scale the bars
-    val maxYield = (dailyTotals.maxByOrNull { it.second }?.second ?: 10.0).toFloat()
+fun SimpleBarChart(data: List<LocalEvent>) {
+    if (data.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No data available for the last 7 days", color = WarmGray, style = MaterialTheme.typography.bodyMedium)
+        }
+        return
+    }
 
-    Row(
-        modifier = Modifier.fillMaxSize().padding(top = 16.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        dailyTotals.forEachIndexed { index, dataPoint ->
-            val dateLabel = dataPoint.first // "2026-03-17"
-            val totalLiters = dataPoint.second
-            val barHeightFraction = (totalLiters.toFloat() / maxYield).coerceAtLeast(0.1f)
+    val maxYield = (data.maxByOrNull { it.milkLiters }?.milkLiters ?: 1.0).coerceAtLeast(1.0).toFloat()
+    val averageYield = data.map { it.milkLiters }.average().toFloat()
 
-            // Comparison logic: Did we do better than the previous day in the list?
-            val isImproved = if (index > 0) totalLiters > dailyTotals[index - 1].second else null
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Average Line
+        val avgLineY = 1f - (averageYield / maxYield).coerceIn(0f, 1f)
+        if (data.size > 1) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Spacer(modifier = Modifier.weight(avgLineY.coerceAtLeast(0.01f)))
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth(),
+                    thickness = 1.dp,
+                    color = SageSuccess.copy(alpha = 0.3f)
+                )
+                Text(
+                    "AVG: ${"%.1f".format(averageYield)}L",
+                    fontSize = 8.sp,
+                    color = SageSuccess,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+                Spacer(modifier = Modifier.weight((1f - avgLineY).coerceAtLeast(0.01f)))
+            }
+        }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // Total Text + Arrow
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "${totalLiters.toInt()}L",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        color = if (isImproved == true) SageSuccess else if (isImproved == false) TerracottaRed else EarthySlate
-                    )
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                // The Bar (Aggregated)
-                Box(
-                    modifier = Modifier
-                        .width(32.dp)
-                        .fillMaxHeight(barHeightFraction * 0.75f)
-                        .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(ForestGreen, ForestGreen.copy(alpha = 0.8f))
-                            )
-                        )
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            data.forEachIndexed { index, event ->
+                val barHeightFraction by animateFloatAsState(
+                    targetValue = (event.milkLiters.toFloat() / maxYield).coerceAtLeast(0.1f),
+                    animationSpec = tween(durationMillis = 1000), label = "BarHeight"
                 )
 
-                Spacer(Modifier.height(8.dp))
+                val isImproved = if (index > 0) {
+                    event.milkLiters > data[index - 1].milkLiters
+                } else null
 
-                // Date Label (e.g., "17/03")
-                val displayDate = try {
-                    val parts = dateLabel.split("-")
-                    "${parts[2]}/${parts[1]}"
-                } catch (e: Exception) { dateLabel }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                    Box(contentAlignment = Alignment.TopCenter) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "${event.milkLiters}L",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (isImproved == true) SageSuccess else if (isImproved == false) TerracottaRed else EarthySlate
+                            )
+                            if (isImproved != null) {
+                                Icon(
+                                    imageVector = if (isImproved) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(10.dp),
+                                    tint = if (isImproved) SageSuccess else TerracottaRed
+                                )
+                            }
+                        }
+                    }
 
-                Text(displayDate, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = WarmGray)
+                    Spacer(Modifier.height(8.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .width(32.dp)
+                            .fillMaxHeight(barHeightFraction * 0.75f)
+                            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = if (event.milkLiters >= averageYield) {
+                                        listOf(ForestGreen, ForestGreen.copy(alpha = 0.7f))
+                                    } else {
+                                        listOf(SunlitAmber, SunlitAmber.copy(alpha = 0.7f))
+                                    }
+                                )
+                            )
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Text(
+                        text = if (event.timestamp.length >= 10) {
+                            event.timestamp.substring(8, 10) + "/" + event.timestamp.substring(5, 7)
+                        } else {
+                            "N/A"
+                        },
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = WarmGray
+                    )
+                }
             }
         }
     }
