@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MilkingDao {
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(event: LocalEvent): Long
 
     @Update
@@ -25,4 +25,11 @@ interface MilkingDao {
 
     @Query("SELECT * FROM local_milking_events WHERE isSynced = 0 AND ownerId = :userId")
     suspend fun getAllUnsynced(userId: String): List<LocalEvent>
+
+    // Added for offline cows support
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCows(cows: List<LocalCow>)
+
+    @Query("SELECT * FROM local_cows WHERE ownerId = :userId")
+    fun getAllCowsLocally(userId: String): Flow<List<LocalCow>>
 }
