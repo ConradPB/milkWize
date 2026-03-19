@@ -5,7 +5,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import android.content.Context
 
-@Database(entities = [LocalEvent::class], version = 1)
+@Database(entities = [LocalEvent::class, LocalCow::class], version = 2)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun milkingDao(): MilkingDao
 
@@ -16,7 +16,8 @@ abstract class AppDatabase : RoomDatabase() {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java, "milkwize_db"
-                ).build().also { instance = it }
+                ).fallbackToDestructiveMigration()
+                .build().also { instance = it }
             }
         }
     }
