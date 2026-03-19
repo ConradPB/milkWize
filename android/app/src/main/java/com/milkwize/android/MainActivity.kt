@@ -105,7 +105,11 @@ fun MilkingDashboard() {
             val milkingDao = db.milkingDao()
             
             val localEvents by milkingDao.getAllLocally(currentUserId).collectAsState(initial = emptyList())
-            var cowList by remember { mutableStateOf(listOf<Cow>()) }
+            val localCows by milkingDao.getAllCowsLocally(currentUserId).collectAsState(initial = emptyList())
+            
+            // Map LocalCow back to Cow model for UI compatibility
+            val cowList = localCows.map { Cow(id = it.id, ownerId = it.ownerId, name = it.name, breed = it.breed) }
+            
             var refreshCowsTrigger by remember { mutableIntStateOf(0) }
 
             LaunchedEffect(currentUserId) {
@@ -134,12 +138,20 @@ fun MilkingDashboard() {
 
             LaunchedEffect(currentUserId, refreshCowsTrigger) {
                 try {
-                    cowList = withContext(Dispatchers.IO) {
+                    val remoteCows = withContext(Dispatchers.IO) {
                         SupabaseClient.client.postgrest["cows"]
                             .select { filter { eq("owner_id", currentUserId) } }
                             .decodeList<Cow>()
                     }
-                } catch (e: Exception) { Log.e("Supabase", "Cow load fail") }
+                    // Cache remote cows locally for offline access
+                    withContext(Dispatchers.IO) {
+                        milkingDao.insertCows(remoteCows.map { 
+                            LocalCow(id = it.id, ownerId = it.ownerId ?: currentUserId, name = it.name, breed = it.breed) 
+                        })
+                    }
+                } catch (e: Exception) { 
+                    Log.e("Supabase", "Cow load fail - using local cache") 
+                }
             }
 
             Scaffold(
@@ -337,7 +349,11 @@ fun UnifiedView(
                                             
                                             newAmount = ""
                                             selectedCow = null
-                                        } catch (e: Exception) { Log.e("Entry", "Failed to save") } finally { isLoading = false }
+                                        } catch (e: Exception) { 
+                                            Log.e("Entry", "Saved locally - pending sync: ${e.message}")
+                                            newAmount = ""
+                                            selectedCow = null
+                                        } finally { isLoading = false }
                                     }
                                 }
                             },
@@ -572,28 +588,6 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     var farmCode by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-
-    // Check for existing session on App Start
-    val supabase = SupabaseClient.client
-    val currentSession = supabase.auth.currentSessionOrNull()
-
-    if (currentSession != null) {
-        // Farmer is already authenticated!
-        // Go straight to Dashboard or show a PIN screen.
-        ShowDashboard()
-    } else {
-        // Only show this if they have NEVER logged in or manually logged out
-        ShowLoginScreen()
-    }
-
-    var isLocked by remember { mutableStateOf(true) }
-    val savedPin = "1234" // This would be saved in EncryptedSharedPreferences
-
-    if (isLocked) {
-        PinEntryScreen(onCorrectPin = { isLocked = false })
-    } else {
-        MilkingDashboard()
-    }
     Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(WarmCream, SoftPeach))).padding(24.dp)) {
         Card(
             modifier = Modifier.align(Alignment.Center).fillMaxWidth(),
