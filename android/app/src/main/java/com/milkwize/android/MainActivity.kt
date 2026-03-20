@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.List
@@ -26,7 +27,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.milkwize.android.ui.theme.*
@@ -92,128 +95,14 @@ suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase:
 @Composable
 fun MilkingDashboard() {
     val sessionStatus by SupabaseClient.client.auth.sessionStatus.collectAsState()
-    var userProfile by remember { mutableStateOf<UserProfile?>(null) }
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val scope = rememberCoroutineScope()
+    var isLocked by remember { mutableStateOf(true) }
 
     when (val status = sessionStatus) {
         is SessionStatus.Authenticated -> {
-            val user = status.session.user
-            val currentUserId = user?.id ?: ""
-            val context = LocalContext.current
-            val db = remember { AppDatabase.getDatabase(context) }
-            val milkingDao = db.milkingDao()
-            
-            val localEvents by milkingDao.getAllLocally(currentUserId).collectAsState(initial = emptyList())
-            val localCows by milkingDao.getAllCowsLocally(currentUserId).collectAsState(initial = emptyList())
-            
-            // Map LocalCow back to Cow model for UI compatibility
-            val cowList = localCows.map { Cow(id = it.id, ownerId = it.ownerId, name = it.name, breed = it.breed) }
-            
-            var refreshCowsTrigger by remember { mutableIntStateOf(0) }
-
-            LaunchedEffect(currentUserId) {
-                if (currentUserId.isNotEmpty()) {
-                    try {
-                        val profile = withContext(Dispatchers.IO) {
-                            SupabaseClient.client.postgrest["profiles"]
-                                .select { filter { eq("id", currentUserId) } }
-                                .decodeSingle<UserProfile>()
-                        }
-                        userProfile = profile
-                    } catch (e: Exception) {
-                        Log.e("Auth", "Profile fetch failed, using fallback: ${e.message}")
-                        val metadata = user?.userMetadata
-                        val role = metadata?.get("role")?.jsonPrimitive?.contentOrNull ?: "farmer"
-                        val farmCode = metadata?.get("farm_code")?.jsonPrimitive?.contentOrNull
-                        userProfile = UserProfile(
-                            id = currentUserId,
-                            email = user?.email ?: "",
-                            role = role,
-                            farm_code = farmCode
-                        )
-                    }
-                }
-            }
-
-            LaunchedEffect(currentUserId, refreshCowsTrigger) {
-                try {
-                    val remoteCows = withContext(Dispatchers.IO) {
-                        SupabaseClient.client.postgrest["cows"]
-                            .select { filter { eq("owner_id", currentUserId) } }
-                            .decodeList<Cow>()
-                    }
-                    // Cache remote cows locally for offline access
-                    withContext(Dispatchers.IO) {
-                        milkingDao.insertCows(remoteCows.map { 
-                            LocalCow(id = it.id, ownerId = it.ownerId ?: currentUserId, name = it.name, breed = it.breed) 
-                        })
-                    }
-                } catch (e: Exception) { 
-                    Log.e("Supabase", "Cow load fail - using local cache") 
-                }
-            }
-
-            Scaffold(
-                containerColor = MilkWhite,
-                topBar = {
-                    Surface(shadowElevation = 8.dp) {
-                        CenterAlignedTopAppBar(
-                            title = { Text("MILKWIZE", fontWeight = FontWeight.Black, color = PaperWhite, letterSpacing = 2.sp) },
-                            actions = {
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) { 
-                                            SupabaseClient.client.auth.signOut()
-                                            db.clearAllTables()
-                                        }
-                                        userProfile = null
-                                    }
-                                }) {
-                                    Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = PaperWhite)
-                                }
-                            },
-                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = SunlitAmber)
-                        )
-                    }
-                },
-                bottomBar = {
-                    NavigationBar(containerColor = PaperWhite) {
-                        NavigationBarItem(
-                            selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
-                            icon = { Icon(Icons.Default.Dashboard, "Home") },
-                            label = { Text("Log") }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
-                            icon = { Icon(Icons.AutoMirrored.Filled.List, "History") },
-                            label = { Text("Reports") }
-                        )
-                    }
-                }
-            ) { padding ->
-                if (userProfile == null) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = ForestGreen)
-                    }
-                } else {
-                    Box(modifier = Modifier.padding(padding)) {
-                        if (selectedTab == 0) {
-                            UnifiedView(
-                                profile = userProfile!!,
-                                milkingDao = milkingDao,
-                                scope = scope,
-                                localEvents = localEvents,
-                                cowList = cowList,
-                                onRefreshCows = { refreshCowsTrigger++ }
-                            )
-                        } else {
-                            AnalyticsScreen(localEvents = localEvents, cowList = cowList)
-                        }
-                    }
-                }
+            if (isLocked) {
+                PinEntryScreen(onCorrectPin = { isLocked = false })
+            } else {
+                DashboardContent(onLogout = { isLocked = true })
             }
         }
         is SessionStatus.Initializing -> {
@@ -222,7 +111,130 @@ fun MilkingDashboard() {
             }
         }
         else -> {
-            LoginScreen(onLoginSuccess = { })
+            LoginScreen(onLoginSuccess = { isLocked = true })
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DashboardContent(onLogout: () -> Unit) {
+    val user = SupabaseClient.client.auth.currentUserOrNull()
+    val currentUserId = user?.id ?: ""
+    val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+    val milkingDao = db.milkingDao()
+    
+    val localEvents by milkingDao.getAllLocally(currentUserId).collectAsState(initial = emptyList())
+    val localCows by milkingDao.getAllCowsLocally(currentUserId).collectAsState(initial = emptyList())
+    val cowList = localCows.map { Cow(id = it.id, ownerId = it.ownerId, name = it.name, breed = it.breed) }
+    
+    var userProfile by remember { mutableStateOf<UserProfile?>(null) }
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var refreshCowsTrigger by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(currentUserId) {
+        if (currentUserId.isNotEmpty()) {
+            try {
+                userProfile = withContext(Dispatchers.IO) {
+                    SupabaseClient.client.postgrest["profiles"]
+                        .select { filter { eq("id", currentUserId) } }
+                        .decodeSingle<UserProfile>()
+                }
+            } catch (e: Exception) {
+                val metadata = user?.userMetadata
+                val role = metadata?.get("role")?.jsonPrimitive?.contentOrNull ?: "farmer"
+                val farmCode = metadata?.get("farm_code")?.jsonPrimitive?.contentOrNull
+                userProfile = UserProfile(id = currentUserId, email = user?.email ?: "", role = role, farm_code = farmCode)
+            }
+        }
+    }
+
+    LaunchedEffect(currentUserId, refreshCowsTrigger) {
+        try {
+            val remoteCows = withContext(Dispatchers.IO) {
+                SupabaseClient.client.postgrest["cows"].select { filter { eq("owner_id", currentUserId) } }.decodeList<Cow>()
+            }
+            withContext(Dispatchers.IO) {
+                milkingDao.insertCows(remoteCows.map { LocalCow(id = it.id, ownerId = it.ownerId ?: currentUserId, name = it.name, breed = it.breed) })
+            }
+        } catch (e: Exception) { Log.e("Supabase", "Cow cache fail") }
+    }
+
+    Scaffold(
+        containerColor = MilkWhite,
+        topBar = {
+            Surface(shadowElevation = 8.dp) {
+                CenterAlignedTopAppBar(
+                    title = { Text("MILKWIZE", fontWeight = FontWeight.Black, color = PaperWhite, letterSpacing = 2.sp) },
+                    actions = {
+                        IconButton(onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { 
+                                    SupabaseClient.client.auth.signOut()
+                                    db.clearAllTables()
+                                }
+                                onLogout()
+                            }
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ExitToApp, "Logout", tint = PaperWhite)
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = SunlitAmber)
+                )
+            }
+        },
+        bottomBar = {
+            NavigationBar(containerColor = PaperWhite) {
+                NavigationBarItem(selected = selectedTab == 0, onClick = { selectedTab = 0 }, icon = { Icon(Icons.Default.Dashboard, "Home") }, label = { Text("Log") })
+                NavigationBarItem(selected = selectedTab == 1, onClick = { selectedTab = 1 }, icon = { Icon(Icons.AutoMirrored.Filled.List, "History") }, label = { Text("Reports") })
+            }
+        }
+    ) { padding ->
+        if (userProfile == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = ForestGreen) }
+        } else {
+            Box(modifier = Modifier.padding(padding)) {
+                if (selectedTab == 0) {
+                    UnifiedView(profile = userProfile!!, milkingDao = milkingDao, scope = scope, localEvents = localEvents, cowList = cowList, onRefreshCows = { refreshCowsTrigger++ })
+                } else {
+                    AnalyticsScreen(localEvents = localEvents, cowList = cowList)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PinEntryScreen(onCorrectPin: () -> Unit) {
+    var pin by remember { mutableStateOf("") }
+    val savedPin = "1234"
+
+    Box(Modifier.fillMaxSize().background(WarmCream), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+            Icon(Icons.Default.Lock, null, tint = ForestGreen, modifier = Modifier.size(64.dp))
+            Spacer(Modifier.height(16.dp))
+            Text("SECURE ACCESS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = EarthySlate)
+            Text("Enter your 4-digit security PIN", color = WarmGray)
+            Spacer(Modifier.height(32.dp))
+            
+            OutlinedTextField(
+                value = pin,
+                onValueChange = { 
+                    if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                        pin = it
+                        if (it == savedPin) onCorrectPin()
+                    }
+                },
+                label = { Text("Security PIN") },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.width(240.dp),
+                textStyle = TextStyle(textAlign = TextAlign.Center, fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp),
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ForestGreen, focusedLabelColor = ForestGreen)
+            )
         }
     }
 }
@@ -350,7 +362,7 @@ fun UnifiedView(
                                             newAmount = ""
                                             selectedCow = null
                                         } catch (e: Exception) { 
-                                            Log.e("Entry", "Saved locally - pending sync: ${e.message}")
+                                            Log.e("Entry", "Saved locally: ${e.message}")
                                             newAmount = ""
                                             selectedCow = null
                                         } finally { isLoading = false }
