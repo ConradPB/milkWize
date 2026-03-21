@@ -1,7 +1,9 @@
 package com.milkwize.android
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -32,6 +34,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.milkwize.android.ui.theme.*
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
@@ -96,13 +99,27 @@ suspend fun syncPendingRecords(userId: String, milkingDao: MilkingDao, supabase:
 fun MilkingDashboard() {
     val sessionStatus by SupabaseClient.client.auth.sessionStatus.collectAsState()
     var isLocked by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    
+    // Persistent PIN state using SharedPreferences
+    val prefs = remember { context.getSharedPreferences("milkwize_prefs", Context.MODE_PRIVATE) }
+    var savedPin by remember { mutableStateOf(prefs.getString("user_pin", "1234") ?: "1234") }
 
     when (val status = sessionStatus) {
         is SessionStatus.Authenticated -> {
             if (isLocked) {
-                PinEntryScreen(onCorrectPin = { isLocked = false })
+                PinEntryScreen(
+                    correctPin = savedPin,
+                    onCorrectPin = { isLocked = false }
+                )
             } else {
-                DashboardContent(onLogout = { isLocked = true })
+                DashboardContent(
+                    onLogout = { isLocked = true },
+                    onUpdatePin = { newPin ->
+                        prefs.edit().putString("user_pin", newPin).apply()
+                        savedPin = newPin
+                    }
+                )
             }
         }
         is SessionStatus.Initializing -> {
@@ -118,7 +135,7 @@ fun MilkingDashboard() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardContent(onLogout: () -> Unit) {
+fun DashboardContent(onLogout: () -> Unit, onUpdatePin: (String) -> Unit) {
     val user = SupabaseClient.client.auth.currentUserOrNull()
     val currentUserId = user?.id ?: ""
     val context = LocalContext.current
@@ -132,6 +149,7 @@ fun DashboardContent(onLogout: () -> Unit) {
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) }
     var refreshCowsTrigger by remember { mutableIntStateOf(0) }
+    var showChangePinDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(currentUserId) {
@@ -169,6 +187,9 @@ fun DashboardContent(onLogout: () -> Unit) {
                 CenterAlignedTopAppBar(
                     title = { Text("MILKWIZE", fontWeight = FontWeight.Black, color = PaperWhite, letterSpacing = 2.sp) },
                     actions = {
+                        IconButton(onClick = { showChangePinDialog = true }) {
+                            Icon(Icons.Default.VpnKey, "Change PIN", tint = PaperWhite)
+                        }
                         IconButton(onClick = {
                             scope.launch {
                                 withContext(Dispatchers.IO) { 
@@ -204,12 +225,66 @@ fun DashboardContent(onLogout: () -> Unit) {
             }
         }
     }
+
+    if (showChangePinDialog) {
+        ChangePinDialog(
+            onDismiss = { showChangePinDialog = false },
+            onPinChanged = { newPin ->
+                onUpdatePin(newPin)
+                showChangePinDialog = false
+                Toast.makeText(context, "PIN Updated Successfully!", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
 }
 
 @Composable
-fun PinEntryScreen(onCorrectPin: () -> Unit) {
+fun ChangePinDialog(onDismiss: () -> Unit, onPinChanged: (String) -> Unit) {
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = PaperWhite,
+        title = { Text("Update Security PIN", fontWeight = FontWeight.Black, color = ForestGreen) },
+        text = {
+            Column {
+                Text("Set a new 4-digit PIN for offline access.", style = MaterialTheme.typography.bodySmall, color = WarmGray)
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = newPin,
+                    onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) newPin = it },
+                    label = { Text("New PIN") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = confirmPin,
+                    onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) confirmPin = it },
+                    label = { Text("Confirm PIN") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (newPin == confirmPin && newPin.length == 4) onPinChanged(newPin) },
+                enabled = newPin.length == 4 && newPin == confirmPin,
+                colors = ButtonDefaults.buttonColors(containerColor = ForestGreen)
+            ) {
+                Text("SAVE PIN")
+            }
+        }
+    )
+}
+
+@Composable
+fun PinEntryScreen(correctPin: String, onCorrectPin: () -> Unit) {
     var pin by remember { mutableStateOf("") }
-    val savedPin = "1234"
 
     Box(Modifier.fillMaxSize().background(WarmCream), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
@@ -224,7 +299,7 @@ fun PinEntryScreen(onCorrectPin: () -> Unit) {
                 onValueChange = { 
                     if (it.length <= 4 && it.all { char -> char.isDigit() }) {
                         pin = it
-                        if (it == savedPin) onCorrectPin()
+                        if (it == correctPin) onCorrectPin()
                     }
                 },
                 label = { Text("Security PIN") },
