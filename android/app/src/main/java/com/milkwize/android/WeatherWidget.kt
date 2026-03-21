@@ -130,7 +130,7 @@ private fun WeatherContent(
                     color = SunlitAmber.copy(alpha = 0.1f),
                     shape = CircleShape,
                     modifier = Modifier.size(48.dp)
-                )
+                ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = if (condition.contains("Cloud")) Icons.Default.Cloud 
