@@ -104,20 +104,26 @@ fun MilkingDashboard() {
     // Persistent PIN state using SharedPreferences
     val prefs = remember { context.getSharedPreferences("milkwize_prefs", Context.MODE_PRIVATE) }
     var savedPin by remember { mutableStateOf(prefs.getString("user_pin", "1234") ?: "1234") }
+    var isPinChanged by remember { mutableStateOf(prefs.getBoolean("pin_changed", false)) }
 
     when (val status = sessionStatus) {
         is SessionStatus.Authenticated -> {
             if (isLocked) {
                 PinEntryScreen(
                     correctPin = savedPin,
+                    isDefaultPin = !isPinChanged,
                     onCorrectPin = { isLocked = false }
                 )
             } else {
                 DashboardContent(
                     onLogout = { isLocked = true },
                     onUpdatePin = { newPin ->
-                        prefs.edit().putString("user_pin", newPin).apply()
+                        prefs.edit()
+                            .putString("user_pin", newPin)
+                            .putBoolean("pin_changed", true)
+                            .apply()
                         savedPin = newPin
+                        isPinChanged = true
                     }
                 )
             }
@@ -283,7 +289,7 @@ fun ChangePinDialog(onDismiss: () -> Unit, onPinChanged: (String) -> Unit) {
 }
 
 @Composable
-fun PinEntryScreen(correctPin: String, onCorrectPin: () -> Unit) {
+fun PinEntryScreen(correctPin: String, isDefaultPin: Boolean, onCorrectPin: () -> Unit) {
     var pin by remember { mutableStateOf("") }
 
     Box(Modifier.fillMaxSize().background(WarmCream), contentAlignment = Alignment.Center) {
@@ -292,6 +298,23 @@ fun PinEntryScreen(correctPin: String, onCorrectPin: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             Text("SECURE ACCESS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = EarthySlate)
             Text("Enter your 4-digit security PIN", color = WarmGray)
+            
+            if (isDefaultPin) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = SunlitAmber.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "DEFAULT PIN: 1234",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        color = SunlitAmber,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
             Spacer(Modifier.height(32.dp))
             
             OutlinedTextField(
