@@ -267,6 +267,11 @@ fun UnifiedView(
         contentPadding = PaddingValues(16.dp)
     ) {
         item {
+            WeatherWidget()
+            Spacer(Modifier.height(16.dp))
+        }
+
+        item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 val totalYield = localEvents.sumOf { it.milkLiters }
                 SummaryStatCard("TODAY'S YIELD", "${"%.1f".format(totalYield)}L", ForestGreen, Icons.Default.WaterDrop, Modifier.weight(1f))
