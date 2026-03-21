@@ -1,6 +1,8 @@
 package com.milkwize.android
 
 import com.google.gson.annotations.SerializedName
+import retrofit2.http.GET
+import retrofit2.http.Query
 
 data class WeatherResponse(
     @SerializedName("main") val main: Main,
@@ -19,11 +21,11 @@ data class Weather(
 )
 
 interface WeatherService {
-    @retrofit2.http.GET("data/2.5/weather")
+    @GET("data/2.5/weather")
     suspend fun getWeather(
-        @retrofit2.http.Query("lat") lat: Double,
-        @retrofit2.http.Query("lon") lon: Double,
-        @retrofit2.http.Query("appid") apiKey: String,
-        @retrofit2.http.Query("units") units: String = "metric"
+        @Query("lat") lat: Double,
+        @Query("lon") lon: Double,
+        @Query("appid") apiKey: String,
+        @Query("units") units: String = "metric"
     ): WeatherResponse
 }
