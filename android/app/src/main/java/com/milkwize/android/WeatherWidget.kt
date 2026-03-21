@@ -1,6 +1,7 @@
 package com.milkwize.android
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,8 +25,7 @@ import kotlinx.coroutines.withContext
 fun WeatherWidget() {
     var weatherData by remember { mutableStateOf<WeatherResponse?>(null) }
     var isLoading by remember { mutableStateOf(true) }
-
-    val scope = rememberCoroutineScope()
+    var useFahrenheit by remember { mutableStateOf(false) } // Default to Celsius for Africa
 
     LaunchedEffect(Unit) {
         try {
@@ -35,13 +35,11 @@ fun WeatherWidget() {
                 .build()
             val service = retrofit.create(WeatherService::class.java)
             
-            // Using a default location for now (e.g., Mbarara, Uganda coordinates)
-            // In a real app, you'd use FusedLocationProviderClient
             val response = withContext(Dispatchers.IO) {
                 service.getWeather(
                     lat = -0.6067, 
                     lon = 30.6558, 
-                    apiKey = "YOUR_OPENWEATHER_API_KEY" // Replace with a real key or BuildConfig
+                    apiKey = "YOUR_OPENWEATHER_API_KEY"
                 )
             }
             weatherData = response
@@ -55,17 +53,21 @@ fun WeatherWidget() {
     if (isLoading) {
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), color = ForestGreen)
     } else if (weatherData != null) {
-        val temp = weatherData!!.main.temp.toInt()
+        val tempC = weatherData!!.main.temp
         val humidity = weatherData!!.main.humidity
         val condition = weatherData!!.weather.firstOrNull()?.main ?: "Clear"
         
-        // THI = (1.8 × T + 32) - [(0.55 - 0.0055 × RH) × (1.8 × T - 26)]
-        val thi = (1.8 * temp + 32) - ((0.55 - 0.0055 * humidity) * (1.8 * temp - 26))
+        // THI calculation always uses Celsius internally as per standard dairy science formula
+        val thi = (1.8 * tempC + 32) - ((0.55 - 0.0055 * humidity) * (1.8 * tempC - 26))
+
+        val displayTemp = if (useFahrenheit) (tempC * 9/5) + 32 else tempC
+        val unitLabel = if (useFahrenheit) "°F" else "°C"
 
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
+                .padding(vertical = 8.dp)
+                .clickable { useFahrenheit = !useFahrenheit }, // Allow farmers to toggle by clicking the card
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = ForestGreen.copy(alpha = 0.05f)),
             border = BorderStroke(1.dp, ForestGreen.copy(alpha = 0.1f))
@@ -88,7 +90,7 @@ fun WeatherWidget() {
                     
                     Column {
                         Text(
-                            text = "$temp°C", 
+                            text = "${displayTemp.toInt()}$unitLabel",
                             style = MaterialTheme.typography.headlineMedium, 
                             fontWeight = FontWeight.Black,
                             color = ForestGreen
