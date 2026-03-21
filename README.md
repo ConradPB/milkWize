@@ -41,3 +41,25 @@ In regions where high temperatures can drop milk production by 15–20% in a sin
 | **Architecture**   | MVVM (Model-View-ViewModel) + Clean Architecture |
 
 ---
+
+## 📊 Business Logic: The "Why"
+
+MilkWize uses the **Temperature-Humidity Index (THI)** to provide context to yield drops:
+
+$$THI = (1.8 \times T + 32) - [(0.55 - 0.0055 \times RH) \times (1.8 \times T - 26)]$$
+
+_Where $T$ = Temperature (°C) and $RH$ = Relative Humidity (%)_
+
+By correlating this data with daily production, the app identifies "Heat Stress" days, allowing for better herd management and resource allocation.
+
+---
+
+## 👨‍💻 Project Context
+
+This project was developed by a developer with a background in International Relations, Economics, and Agribusiness ownership. It represents a synthesis of technical software engineering and deep domain knowledge of the Ugandan dairy sector.
+
+---
+
+## 📝 License
+
+This project is for demonstration and professional portfolio purposes. All rights reserved.
